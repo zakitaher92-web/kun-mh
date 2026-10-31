@@ -2909,14 +2909,14 @@ const IMPORTS = {
     can: () => canEdit('Vendors'), why: () => 'Needs entry rights on Vendors (MH-04).', list: () => S.vendors,
     cols: [
       { k: 'code', h: 'Vendor code', al: ['code'], note: 'Leave blank for a new vendor - the next V- number is given.' },
-      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'contractor', 'supplier'], note: 'Unique. Cannot change once used on a PO or bill.' },
-      { k: 'type', h: 'Type', t: 'pick', o: () => S.lists.vendorTypes, al: ['vendor type'] },
-      { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category'] },
-      { k: 'contact', h: 'Contact person', al: ['contact'] },
-      { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no'] },
+      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'contractor', 'supplier', 'supplier name', 'company', 'company name', 'firm', 'firm name', 'party name'], note: 'Unique. Cannot change once used on a PO or bill.' },
+      { k: 'type', h: 'Type', t: 'pick', o: () => S.lists.vendorTypes, al: ['vendor type', 'supplier type'] },
+      { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category', 'items supplied', 'products', 'services', 'nature of business', 'scope'] },
+      { k: 'contact', h: 'Contact person', al: ['contact', 'contact name', 'person'] },
+      { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no', 'phone number', 'mobile no', 'mobile number', 'contact no', 'contact number', 'whatsapp'] },
       { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Default Y.' },
-      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account'] },
-      { k: 'remarks', h: 'Remarks', al: ['notes'] },
+      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
+      { k: 'remarks', h: 'Remarks', al: ['notes', 'comments'] },
     ],
     need: u => u.has('code') || u.has('name') ? '' : 'A "Vendor code" or "Vendor / contractor name" column is needed.',
     find: r => r.code ? S.vendors.find(v => lc(v.code) === lc(r.code)) || null : r.name ? S.vendors.find(v => lc(v.name) === lc(r.name)) || null : null,
@@ -2937,29 +2937,61 @@ const IMPORTS = {
   },
   mpl: {
     label: 'Master price list rates', fmt: 'MH-05', sheet: 'MPL', view: 'mpl', match: 'Item code + vendor',
-    desc: 'Approved rate per item and vendor, with validity and basis. Import items and vendors first.',
+    desc: 'Approved rate per item and vendor, with validity and basis. Your own price list can go in directly: vendors not yet on the vendor list and items not yet in the Items list are added from it.',
     can: () => canEdit('MPL') && S.mpl.status !== 'Approved',
-    why: () => S.mpl.status === 'Approved' && canEdit('MPL') ? 'The MPL is approved and locked - click Revise MPL on the MPL page first, then import, then approve again.' : 'Needs entry rights on the MPL (MH-05).',
+    why: () => S.mpl.status === 'Approved' && canEdit('MPL') ? 'The MPL is approved and locked - click Revise MPL first, then import, then approve again.' : 'Needs entry rights on the MPL (MH-05).',
     list: () => S.mpl.rows,
     cols: [
-      { k: 'item', h: 'Item code', req: 1, t: 'pick', o: () => S.items.map(i => [i.code, i.name]), al: ['item', 'code'], note: 'An item code (or exact item name) from the Items list.' },
-      { k: 'vendor', h: 'Vendor', req: 1, t: 'pick', o: () => S.vendors.map(v => [v.name, v.code]), al: ['vendor name', 'vendor code', 'supplier'], note: 'A vendor name (or vendor code) from the vendor list.' },
-      { k: 'rate', h: 'Approved rate (IQD)', req: 1, t: 'num', al: ['rate', 'approved rate'] },
-      { k: 'prev', h: 'Previous rate (IQD)', t: 'num', al: ['previous rate', 'prev rate', 'old rate'] },
-      { k: 'from', h: 'Valid from', t: 'date', note: 'Default today.' },
-      { k: 'to', h: 'Valid to', t: 'date', note: 'Default: the MPL valid-until date.' },
-      { k: 'basis', h: 'Basis (quotes compared / remarks)', al: ['basis', 'remarks'] },
+      { k: 'item', h: 'Item code', al: ['code', 'item no', 'item number', 'item id'], note: 'A code from the Items list. Blank: the item is found by its name; a new item gets the next code of its category.' },
+      { k: '_name', h: 'Item / service name', al: ['item', 'item name', 'name', 'description', 'item description', 'service', 'particulars', 'material'], get: o => itemName(o.item), note: 'Finds the item when there is no code; the name of a new item.' },
+      { k: '_cat', h: 'Category', t: 'pick', o: () => S.categories.map(c => c.name), al: ['item category'], get: o => (item(o.item) || {}).cat, note: 'Only needed when the item is new (not yet in the Items list).' },
+      { k: '_unit', h: 'Unit', t: 'pick', o: () => S.lists.units, addNew: 1, al: ['uom', 'unit of measure'], get: o => (item(o.item) || {}).unit, note: 'Only used when the item is new. Default nos.' },
+      { k: 'vendor', h: 'Vendor', req: 1, al: ['vendor name', 'vendor code', 'supplier', 'supplier name', 'contractor', 'vendor / contractor name'], note: 'A vendor name or code. A vendor not on the vendor list is added to it (new V- code).' },
+      { k: 'rate', h: 'Approved rate (IQD)', req: 1, t: 'num', al: ['rate', 'approved rate', 'price', 'unit price', 'unit rate', 'rate iqd', 'price iqd'] },
+      { k: 'prev', h: 'Previous rate (IQD)', t: 'num', al: ['previous rate', 'prev rate', 'old rate', 'last rate'], note: 'Blank on a changed rate: the rate in the app becomes the previous rate.' },
+      { k: 'from', h: 'Valid from', t: 'date', al: ['from', 'effective from', 'start date'], note: 'Default today.' },
+      { k: 'to', h: 'Valid to', t: 'date', al: ['to', 'valid till', 'valid until', 'end date', 'expiry'], note: 'Default: the MPL valid-until date.' },
+      { k: 'basis', h: 'Basis (quotes compared / remarks)', al: ['basis', 'remarks', 'notes'] },
     ],
-    need: u => u.has('item') && u.has('vendor') ? '' : 'The "Item code" and "Vendor" columns are both needed.',
+    need: u => (u.has('item') || u.has('_name')) && u.has('vendor') ? '' : 'An "Item code" or "Item / service name" column and a "Vendor" column are needed.',
+    pre: (r, ctx, E, W) => {
+      const cErr = h => E.some(e => e.startsWith(h + ':'));
+      let it = r.item ? S.items.find(i => lc(i.code) === lc(r.item)) : null;
+      if (!it && r._name) { it = S.items.find(i => lc(i.name) === lc(r._name)); if (it && r.item) W.push('Item code ' + r.item + ' not found - matched by name to ' + it.code); }
+      if (it) r.item = it.code;
+      else if (r.item || r._name) {
+        let nw = ctx.newItems.get(lc(r._name || r.item));
+        if (!nw) {
+          if (!canEdit('Items')) E.push('Item "' + (r._name || r.item) + '" is not in the Items list (adding items needs entry rights on Items)');
+          else if (!r._name) E.push('Item code ' + r.item + ' is not in the Items list - give the item name and category so it can be added');
+          else if (!r._cat) { if (!cErr('Category')) E.push('Item "' + r._name + '" is new - give its Category so it can be added to the Items list'); }
+          else if (r.item && [...ctx.newItems.values()].some(i => lc(i.code) === lc(r.item))) E.push('Item code ' + r.item + ' is used for two different new items');
+          else { nw = { code: r.item || ctx.nextItem(r._cat), name: r._name, cat: r._cat, unit: r._unit || 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: 'Added by MPL import' }; ctx.newItems.set(lc(r._name), nw); }
+        }
+        if (nw) { r.item = nw.code; r._newItem = nw; W.push('New item ' + nw.code + ' "' + nw.name + '" will be added to the Items list'); }
+      } else E.push('Item code or item name is needed');
+      if (r.vendor) {
+        const v = S.vendors.find(x => lc(x.name) === lc(r.vendor) || lc(x.code) === lc(r.vendor));
+        if (v) r.vendor = v.name;
+        else if (/^V-\d+$/i.test(r.vendor)) E.push('Vendor code ' + r.vendor + ' is not on the vendor list');
+        else {
+          let nv = ctx.newVendors.get(lc(r.vendor));
+          if (!nv && !canEdit('Vendors')) E.push('Vendor "' + r.vendor + '" is not on the vendor list (adding vendors needs entry rights on Vendors)');
+          else if (!nv) { nv = { code: ctx.nextVendor(), name: r.vendor, type: 'Supplier', supplies: r._cat || '', contact: '', phone: '', avl: 'Y', bank: '', remarks: 'Added by MPL import - complete contact and bank details' }; ctx.newVendors.set(lc(r.vendor), nv); }
+          if (nv) { r.vendor = nv.name; r._newVendor = nv; W.push('New vendor ' + nv.code + ' "' + nv.name + '" will be added to the vendor list'); }
+        }
+      }
+    },
     find: r => r.item && r.vendor ? S.mpl.rows.find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
-    key: r => (r.item || '') + ' | ' + (r.vendor || ''),
+    key: r => r.item && r.vendor ? r.item + ' | ' + r.vendor : '',
     check: (r, ex, ctx, E) => {
       if (r.rate !== undefined && r.rate <= 0) E.push('Rate must be above zero');
+      if (ex && r.rate !== undefined && num(r.rate) !== num(ex.rate) && r.prev === undefined && num(ex.rate)) r.prev = num(ex.rate);
       const f = r.from || (ex && ex.from), t = r.to || (ex && ex.to);
       if (f && t && t < f) E.push('Valid to is before valid from');
     },
     blank: () => ({ item: '', vendor: '', rate: null, from: isoDate(new Date()), to: S.mpl.validUntil, prev: null, basis: '' }),
-    show: ['item', 'vendor', 'rate', 'from', 'to'],
+    show: ['item', '_name', 'vendor', 'rate', 'from', 'to'],
   },
   budget: {
     label: 'Budget lines', fmt: 'MH-01 / 02', sheet: 'Budget lines', view: 'settings', match: 'Code',
@@ -3064,7 +3096,8 @@ function impConv(c, v) {
   switch (c.t) {
     case 'num': {
       if (typeof v === 'number') return { v };
-      const s = String(v).replace(/[,\s]/g, '');
+      const s = String(v).replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/٫/g, '.')
+        .replace(/[,\s٬]/g, '').replace(/^(IQD|ID|USD|\$|د\.?ع\.?)/i, '').replace(/(IQD|ID|USD|\$|د\.?ع\.?|\/-)$/i, '');
       return /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? { v: parseFloat(s) } : { err: '"' + v + '" is not a number' };
     }
     case 'date': return impDate(v);
@@ -3080,21 +3113,49 @@ function impConv(c, v) {
     default: return { v: String(v).trim() };
   }
 }
-function impPrepare(kind, table) {
-  const sp = IMPORTS[kind], cols = sp.cols;
-  const match = h => { const n = impNorm(h); return n ? cols.find(c => [c.h, c.k].concat(c.al || []).some(a => impNorm(a) === n)) || null : null; };
-  let hr = -1, map = [];
-  for (let r = 0; r < Math.min(table.length, 15); r++) {
+/* Column choices the user made for their own headings, remembered in this browser per list: { kind: { normalisedHeading: fieldKey or '-' } } */
+const IMP_MAP_KEY = 'kunmh.importColumns';
+const impSaved = () => { try { return JSON.parse(localStorage.getItem(IMP_MAP_KEY) || '{}') || {}; } catch (e) { return {}; } };
+const impSave = (kind, heading, k) => { try { const a = impSaved(); a[kind] = a[kind] || {}; a[kind][impNorm(heading)] = k || '-'; localStorage.setItem(IMP_MAP_KEY, JSON.stringify(a)); } catch (e) { } };
+const impForget = kind => { try { const a = impSaved(); delete a[kind]; localStorage.setItem(IMP_MAP_KEY, JSON.stringify(a)); } catch (e) { } };
+function impPrepare(kind, table, ov) {
+  const sp = IMPORTS[kind], cols = sp.cols, saved = impSaved()[kind] || {};
+  const match = h => {
+    const n = impNorm(h); if (!n) return null;
+    if (saved[n]) return saved[n] === '-' ? null : cols.find(c => c.k === saved[n]) || null;
+    return cols.find(c => [c.h, c.k].concat(c.al || []).some(a => impNorm(a) === n)) || null;
+  };
+  const filled = r => (table[r] || []).some(v => String(v ?? '').trim() !== '');
+  let hr = -1, map = [], found = true;
+  if (ov && ov.hr !== undefined) { hr = Math.max(0, Math.min(ov.hr, table.length - 1)); map = (table[hr] || []).map(match); }
+  else for (let r = 0; r < Math.min(table.length, 15); r++) {
     const m = (table[r] || []).map(match);
     if (m.filter(Boolean).length >= Math.min(2, cols.length)) { hr = r; map = m; break; }
   }
-  if (hr < 0) return { err: 'No header row found. The first row must hold the column names of the template, e.g. ' + cols.slice(0, 3).map(c => '"' + c.h + '"').join(', ') + '.' };
+  if (hr < 0) { found = false; hr = Math.max(0, table.findIndex((r, i) => filled(i))); map = (table[hr] || []).map(match); }
+  const width = Math.max(0, ...table.slice(hr, hr + 200).map(r => (r || []).length));
+  map = Array.from({ length: width }, (_, i) => ov && ov.map && i in ov.map ? (cols.find(c => c.k === ov.map[i]) || null) : map[i] || null);
   const used = new Set();
   map = map.map(c => { if (!c || used.has(c.k)) return null; used.add(c.k); return c; });
-  const ignored = (table[hr] || []).filter((h, i) => String(h ?? '').trim() && !map[i]).map(h => String(h).trim());
-  const needErr = sp.need(used); if (needErr) return { err: needErr };
+  const heads = map.map((c, i) => {
+    const h = String((table[hr] || [])[i] ?? '').trim();
+    let sample = ''; for (let r = hr + 1; r < Math.min(table.length, hr + 30) && sample === ''; r++) sample = String((table[r] || [])[i] ?? '').trim();
+    return { i, h, k: c ? c.k : '', sample };
+  }).filter(x => x.h || x.sample || x.k);
+  const ignored = heads.filter(x => x.h && !x.k).map(x => x.h);
+  const base = { heads, hr, found, ignored, used };
+  if (!found && !used.size) return Object.assign(base, { err: 'The column headings of this sheet were not recognised. Choose below which of your columns holds what (the app remembers your choice for next time), or check the header row number.' });
+  const needErr = sp.need(used); if (needErr) return Object.assign(base, { err: needErr + ' Choose it below in "Your columns".' });
   let vn = Math.max(0, ...S.vendors.map(v => +(/^V-(\d+)$/i.exec(v.code) || [])[1] || 0));
-  const ctx = { names: new Set(), keys: new Map(), nextVendor: () => 'V-' + pad4(++vn) };
+  const ctx = { names: new Set(), keys: new Map(), nextVendor: () => 'V-' + pad4(++vn), newItems: new Map(), newVendors: new Map() };
+  ctx.nextItem = cat => {
+    const all = S.items.concat([...ctx.newItems.values()]), pre = c => (/^([A-Za-z]+)-?\d+$/.exec(c) || [])[1];
+    const ps = all.filter(i => i.cat === cat).map(i => pre(i.code)).filter(Boolean);
+    let p = ps.sort((a, b) => ps.filter(x => x === b).length - ps.filter(x => x === a).length)[0];
+    if (!p) { const w = cat.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/); p = (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase() || 'IT'; }
+    const n = Math.max(0, ...all.filter(i => pre(i.code) === p).map(i => +(/(\d+)$/.exec(i.code) || [])[1] || 0));
+    return p + '-' + String(n + 1).padStart(3, '0');
+  };
   const rows = [];
   for (let r = hr + 1; r < table.length; r++) {
     const cells = table[r] || [];
@@ -3106,6 +3167,7 @@ function impPrepare(kind, table) {
       const x = impConv(c, v);
       if (x.err) E.push(c.h + ': ' + x.err); else { raw[c.k] = x.v; if (x.warn) W.push(x.warn); }
     });
+    if (sp.pre) sp.pre(raw, ctx, E, W);
     const ex = sp.find(raw);
     if (!ex) cols.filter(c => c.req && raw[c.k] === undefined && !E.some(e => e.startsWith(c.h + ':'))).forEach(c => E.push(c.h + ' is needed for a new row'));
     if (sp.check) sp.check(raw, ex, ctx, E, W);
@@ -3113,11 +3175,11 @@ function impPrepare(kind, table) {
     const kk = lc(key);
     if (kk && ctx.keys.has(kk)) E.push('Same ' + sp.match.split(' (')[0].toLowerCase() + ' as row ' + ctx.keys.get(kk));
     else if (kk) ctx.keys.set(kk, r + 1);
-    const changes = ex ? Object.keys(raw).filter(k => String(ex[k] ?? '') !== String(raw[k] ?? '')) : [];
+    const changes = ex ? Object.keys(raw).filter(k => k[0] !== '_' && String(ex[k] ?? '') !== String(raw[k] ?? '')) : [];
     const action = E.length ? 'Error' : !ex ? 'New' : changes.length ? 'Update' : 'No change';
     rows.push({ n: r + 1, raw, ex, key, action, E, W, changes });
   }
-  return { rows, ignored, used, hr };
+  return Object.assign(base, { rows });
 }
 
 /* ---------- screens ---------- */
@@ -3131,15 +3193,16 @@ function impCard(kind, inModal) {
     ${ok ? `<div class="vtools"><button class="btn" data-act="impTpl" data-id="${kind}">Download Excel template</button>
       <label class="btn pri">Import Excel file<input type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onchange="App.importFile('${kind}', this)"></label>
       ${inModal ? '' : `<a href="#" data-act="goto" data-id="${sp.view}" class="small">Open the list</a>`}</div>`
-    : `<p class="small">${flag(sp.why())}</p>`}`;
+    : `<p class="small">${flag(sp.why())}</p>${kind === 'mpl' && canEdit('MPL') && S.mpl.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : ''}`}`;
 }
 view('import', 'Import master data from Excel', 'Items', 'Masters', 'Import', () => `
   <section class="card"><h3>How it works</h3><ol class="flow">
   <li><b>Download the Excel template</b> of the list. It already holds the rows in the app, so you can correct them and add new rows below. A second sheet explains every column.</li>
-  <li><b>Fill it in Excel</b> - one row per record, keep the header row. Your own master sheet also works if its column headings match the template (extra columns are ignored).</li>
+  <li><b>Fill it in Excel</b> - one row per record, keep the header row. <b>Your own Excel also works directly</b>: headings the app does not recognise can be matched by hand on the check screen ("Your columns"), and the app remembers the choice for the next import.</li>
   <li><b>Import the file</b> (.xlsx or .csv). The app first shows every row as New, Update, No change or Error, and saves only when you confirm. Rows with errors are skipped - correct them in Excel and import again.</li>
   <li>Rows already in the app are matched and updated; <b>blank cells keep the value already in the app</b>. Nothing is deleted (except rooms, when you tick "replace the room list").</li>
-  <li>Order: Items and Vendors first, then MPL rates (they refer to items and vendors), then PPM equipment.</li></ol></section>
+  <li><b>Master price list in one go</b>: import your price list on the MPL card. Vendors that are not on the vendor list are added (new V- code), and items not in the Items list are added when the sheet gives the item name and category. Import your vendor list first (or afterwards) to fill in phone, contact and bank details.</li>
+  <li>One workbook with several sheets (e.g. vendors and prices): import it on each card and pick the sheet at the top of the check screen.</li></ol></section>
   <div class="two">${Object.keys(IMPORTS).map(k => `<section class="card">${impCard(k)}</section>`).join('')}</div>`);
 ACT.impOpen = kind => modal('Import ' + IMPORTS[kind].label.toLowerCase() + ' from Excel', impCard(kind, true)
   + '<p class="small muted">Blank cells keep the value already in the app; rows with errors are skipped. You see every row before anything is saved. More lists: Masters &gt; Import from Excel.</p>', [], { noFocus: true });
@@ -3148,7 +3211,7 @@ const impBtn = kind => IMPORTS[kind].can() ? `<button class="btn ghost" data-act
 ACT.impTpl = kind => {
   const sp = IMPORTS[kind];
   const val = (c, v) => v === null || v === undefined ? '' : c.t === 'num' ? (v === '' ? '' : num(v)) : c.t === 'date' && v ? fdate(v) : v;
-  const data = [sp.cols.map(c => c.h)].concat(sp.list().map(o => sp.cols.map(c => val(c, o[c.k]))));
+  const data = [sp.cols.map(c => c.h)].concat(sp.list().map(o => sp.cols.map(c => val(c, c.get ? c.get(o) : o[c.k]))));
   const what = c => c.note || (c.t === 'num' ? 'Number' : c.t === 'date' ? 'Date' : c.t === 'yn' ? 'Y or N' : c.t === 'pick' ? '' : 'Text');
   const allowed = c => { if (c.t !== 'pick') return c.t === 'date' ? 'dd-mm-yyyy, dd-Mon-yyyy or an Excel date' : ''; const o = c.o().map(x => Array.isArray(x) ? x[0] : x); return o.length <= 40 ? o.join(' | ') : 'See the list in the app'; };
   const info = [['Column', 'Needed for a new row', 'What to enter', 'Allowed values / format']].concat(sp.cols.map(c => [c.h, c.req ? 'Yes' : '', what(c), allowed(c)]))
@@ -3173,20 +3236,33 @@ App.importFile = async (kind, inp) => {
     const sp = IMPORTS[kind];
     let idx = wb.sheets.findIndex(s => impNorm(s.name) === impNorm(sp.sheet));
     if (idx < 0) idx = wb.sheets.findIndex(s => !/instruction/i.test(s.name) && s.rows.length);
-    IMP = { kind, wb, idx: Math.max(0, idx), name: f.name, replace: false };
+    IMP = { kind, wb, idx: Math.max(0, idx), name: f.name, replace: false, ov: null };
     impShow();
   } catch (e) { console.error(e); toast('Could not read ' + f.name + ': ' + e.message, 'bad'); }
 };
-App.impSheet = i => { IMP.idx = +i; impShow(); };
+App.impSheet = i => { IMP.idx = +i; IMP.ov = null; impShow(); };
+App.impMap = (i, k) => { const h = (IMP.prep.heads.find(x => x.i === +i) || {}).h; if (h) impSave(IMP.kind, h, k); IMP.ov = IMP.ov || { hr: IMP.prep.hr }; IMP.ov.hr = IMP.prep.hr; IMP.ov.map = Object.assign(IMP.ov.map || {}, { [+i]: k }); if (k) IMP.prep.heads.forEach(x => { if (x.k === k && x.i !== +i) IMP.ov.map[x.i] = ''; }); impShow(); };
+App.impHeader = n => { n = parseInt(n, 10); if (!(n >= 1)) return; IMP.ov = { hr: n - 1 }; impShow(); };
+App.impForget = () => { impForget(IMP.kind); IMP.ov = null; impShow(); toast('Your column choices for this list are forgotten.', 'ok'); };
+function impColsPanel(prep, kind, open) {
+  const sp = IMPORTS[kind], o = [['', '(not used)']].concat(sp.cols.map(c => [c.k, c.h + (c.req ? ' *' : '')]));
+  return `<details class="card" ${open ? 'open' : ''}><summary><b>Your columns</b> <span class="muted">${prep.heads.filter(x => x.k).length} of ${prep.heads.length} used &middot; header on row ${prep.hr + 1} - click to check or change</span></summary>
+    <p class="small muted">Tell the app which of your columns holds what. Your choice is remembered in this browser for the next import of this list. * = needed for a new row.</p>
+    <div class="vtools"><label class="mp">Header row <input type="number" min="1" style="width:5em" value="${prep.hr + 1}" onchange="App.impHeader(this.value)"></label> <a href="#" class="small" onclick="App.impForget(); return false;">Forget my column choices</a></div>
+    <div class="tw"><table><thead><tr><th>Your column</th><th>First value</th><th>Use as</th></tr></thead><tbody>${prep.heads.map(x => `<tr><td><b>${esc(x.h || '(no heading)')}</b></td><td class="muted">${esc(x.sample.slice(0, 40))}</td>
+      <td><select onchange="App.impMap(${x.i}, this.value)">${opts(o, x.k, false)}</select></td></tr>`).join('')}</tbody></table></div></details>`;
+}
 App.impReplace = v => { IMP.replace = v; };
 function impShow() {
   const { kind, wb, idx, name } = IMP, sp = IMPORTS[kind];
-  const prep = IMP.prep = impPrepare(kind, wb.sheets[idx].rows);
+  const prep = IMP.prep = impPrepare(kind, wb.sheets[idx].rows, IMP.ov);
   const sheetSel = wb.sheets.length > 1 ? `<label class="mp">Sheet <select onchange="App.impSheet(this.value)">${opts(wb.sheets.map((s, i) => [i, s.name]), idx, false)}</select></label>` : '';
-  if (prep.err) return modal('Import ' + sp.label.toLowerCase(), `<div class="sum"><b>${esc(name)}</b> ${sheetSel}</div><p class="note warn">${esc(prep.err)}</p><p class="small muted">Download the Excel template to see the expected column names.</p>`, [{ l: 'Download Excel template', fn: () => ACT.impTpl(kind) }], { wide: true, noFocus: true });
+  if (prep.err) return modal('Import ' + sp.label.toLowerCase(), `<div class="sum"><b>${esc(name)}</b> ${sheetSel}</div><p class="note warn">${esc(prep.err)}</p>${impColsPanel(prep, kind, true)}<p class="small muted">Or download the Excel template to see the expected column names.</p>`, [{ l: 'Download Excel template', fn: () => ACT.impTpl(kind) }], { wide: true, noFocus: true });
   const c = a => prep.rows.filter(r => r.action === a).length;
   const nN = c('New'), nU = c('Update'), nS = c('No change'), nE = c('Error'), go = nN + nU;
   const AF = { New: 'ok', Update: '', 'No change': 'ok', Error: 'bad' };
+  const addI = new Set(prep.rows.filter(r => r.action === 'New' || r.action === 'Update').map(r => r.raw._newItem).filter(Boolean)).size;
+  const addV = new Set(prep.rows.filter(r => r.action === 'New' || r.action === 'Update').map(r => r.raw._newVendor).filter(Boolean)).size;
   const keepRooms = kind === 'rooms' ? S.rooms.filter(r => !prep.rows.some(x => x.action !== 'Error' && lc(x.key) === lc(r.no))) : [];
   const cols = [
     { h: 'Row', n: 1, v: r => r.n }, { h: 'Key', v: r => `<b>${esc(r.key)}</b>` },
@@ -3194,10 +3270,12 @@ function impShow() {
     { h: 'Details', w: 260, v: r => r.E.map(e => `<span class="flag bad">${esc(e)}</span>`).concat(r.W.map(w => `<span class="flag">${esc(w)}</span>`)).join(' ')
         + (r.action === 'Update' ? '<div class="small">' + r.changes.map(k => `${esc(impColByK(kind, k).h)}: ${impShowVal(r.ex[k])} &rarr; ${impShowVal(r.raw[k])}`).join('<br>') + '</div>' : ''),
       x: r => r.E.concat(r.W).concat(r.action === 'Update' ? r.changes.map(k => impColByK(kind, k).h + ': ' + (r.ex[k] ?? '') + ' -> ' + (r.raw[k] ?? '')) : []).join('; ') },
-  ].concat(sp.show.map(k => ({ h: impColByK(kind, k).h, v: r => impShowVal(r.raw[k] !== undefined ? r.raw[k] : r.ex ? r.ex[k] : ''), x: r => r.raw[k] ?? (r.ex ? r.ex[k] : '') ?? '' })));
+  ].concat(sp.show.map(k => { const cc = impColByK(kind, k), ev = r => r.raw[k] !== undefined ? r.raw[k] : r.ex ? (cc.get ? cc.get(r.ex) : r.ex[k]) : ''; return { h: cc.h, v: r => impShowVal(ev(r)), x: r => ev(r) ?? '' }; }));
   const body = `<div class="sum"><b>${esc(name)}</b> ${sheetSel} <span class="muted">${prep.rows.length} data row(s), header on row ${prep.hr + 1}</span>
       <span class="flag ok">New ${nN}</span> <span class="flag">Update ${nU}</span> <span class="flag ok">No change ${nS}</span> <span class="flag ${nE ? 'bad' : 'ok'}">Errors ${nE}</span></div>
-    ${prep.ignored.length ? `<p class="note warn">Columns not recognised - ignored: ${esc(prep.ignored.join(', '))}</p>` : ''}
+    ${prep.ignored.length ? `<p class="note warn">Columns not used: ${esc(prep.ignored.join(', '))} - if one of them should be imported, choose it in "Your columns" below.</p>` : ''}
+    ${impColsPanel(prep, kind, !prep.found || prep.ignored.length > 0)}
+    ${addI || addV ? `<p class="note">This import also adds ${addV ? addV + ' new vendor(s) to the vendor list' : ''}${addI && addV ? ' and ' : ''}${addI ? addI + ' new item(s) to the Items list' : ''}. Complete their details (phone, bank, norms) on those lists afterwards.</p>` : ''}
     ${nE ? `<p class="note warn">${nE} row(s) with errors will be skipped. Correct them in Excel and import the file again - rows already imported then show "No change".</p>` : ''}
     ${kind === 'rooms' && keepRooms.length ? `<label class="chk"><input type="checkbox" onchange="App.impReplace(this.checked)"> Replace the room list: remove the ${keepRooms.length} room(s) in the app that are not in this file (rooms with an open request are kept)</label>` : ''}
     ${table('imp', cols, prep.rows, { name: 'Import check ' + sp.label, noTools: prep.rows.length < 12, rowCls: r => '' })}`;
@@ -3209,11 +3287,17 @@ function impShow() {
 function impApply() {
   const { kind, prep, name } = IMP, sp = IMPORTS[kind];
   if (!sp.can()) return toast(sp.why(), 'bad');
-  let nN = 0, nU = 0, nR = 0;
+  let nN = 0, nU = 0, nR = 0, nI = 0, nV = 0;
+  const clean = o => Object.fromEntries(Object.entries(o).filter(([k]) => k[0] !== '_'));
   prep.rows.forEach(r => {
-    if (r.action === 'New') { const o = Object.assign(sp.blank(), r.raw); if (sp.fix) sp.fix(o); sp.list().push(o); nN++; }
-    else if (r.action === 'Update') { Object.assign(r.ex, r.raw); if (sp.fix) sp.fix(r.ex); nU++; }
+    if (r.action !== 'New' && r.action !== 'Update') return;
+    const ni = r.raw._newItem, nv = r.raw._newVendor;
+    if (ni && !S.items.includes(ni)) { if (S.items.some(i => lc(i.code) === lc(ni.code) || lc(i.name) === lc(ni.name))) return; S.items.push(ni); if (!S.lists.units.includes(ni.unit)) S.lists.units.push(ni.unit); nI++; }
+    if (nv && !S.vendors.includes(nv)) { if (S.vendors.some(v => lc(v.code) === lc(nv.code) || lc(v.name) === lc(nv.name))) return; S.vendors.push(nv); nV++; }
+    if (r.action === 'New') { const o = Object.assign(sp.blank(), clean(r.raw)); if (sp.fix) sp.fix(o); sp.list().push(o); nN++; }
+    else { Object.assign(r.ex, clean(r.raw)); if (sp.fix) sp.fix(r.ex); nU++; }
   });
+  const extra = (nV ? ', ' + nV + ' vendor(s) added' : '') + (nI ? ', ' + nI + ' item(s) added' : '');
   if (kind === 'rooms' && IMP.replace) {
     const inFile = new Set(prep.rows.filter(r => r.action !== 'Error').map(r => lc(r.key)));
     const busy = no => S.jobs.some(j => j.room === no && !j.completed);
@@ -3223,8 +3307,8 @@ function impApply() {
   if (sp.after) sp.after();
   if (kind === 'users' && SHARED) S.users.forEach(u => { if (u.cid === undefined) u.cid = ''; });
   IMP = null; closeModal();
-  commit('Imported from Excel', `${sp.label}: ${nN} new, ${nU} updated${nR ? ', ' + nR + ' removed' : ''} (${name})`);
-  render(); toast(`${sp.label}: ${nN} added, ${nU} updated${nR ? ', ' + nR + ' removed' : ''}.`, 'ok');
+  commit('Imported from Excel', `${sp.label}: ${nN} new, ${nU} updated${nR ? ', ' + nR + ' removed' : ''}${extra} (${name})`);
+  render(); toast(`${sp.label}: ${nN} added, ${nU} updated${nR ? ', ' + nR + ' removed' : ''}${extra}.`, 'ok');
 }
 </script>
 <script>const PRINT_CSS = document.getElementById('printcss').textContent.replace(/@media print\{[\s\S]*?\}\s*\}/, '');</script>
