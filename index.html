@@ -246,6 +246,48 @@ ol.flow li,.card ul li{margin-bottom:6px}
       auth.sendPasswordResetEmail(em).then(() => err('If that email has an account, a reset link is on its way.'), x => err('Could not send the email: ' + x.message));
     };
   }
+  // First run (no app set up yet): the person setting up creates the administrator log-in here.
+  function firstRunLink() {
+    fs.doc('public/status').get().then(s => {
+      const f = document.getElementById('fbForm'); if (s.exists || !f) return;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn full'; b.textContent = 'First-time set-up: create the administrator log-in';
+      b.onclick = showFirstRun; f.insertBefore(b, f.querySelector('.notes'));
+    }).catch(() => { });
+  }
+  function showFirstRun() {
+    document.getElementById('app').innerHTML = `<div class="login"><form class="lcard" id="fbFirst">
+      <div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>First-time set-up</h1>
+      <p class="muted">Create the administrator log-in (normally the Head of Accounts). Only possible before the app is set up; afterwards the administrator creates every other log-in from Admin &gt; Users.</p>
+      <label for="frEmail">Administrator email</label><input id="frEmail" type="email" autocomplete="username" required>
+      <label for="frPw">Choose a password (min. 8)</label><input id="frPw" type="password" autocomplete="new-password" required>
+      <label for="frPw2">Repeat password</label><input id="frPw2" type="password" autocomplete="new-password" required>
+      <div id="frErr" class="err"></div><button class="btn pri full" type="submit">Create administrator log-in</button>
+      <button class="btn ghost full" type="button" onclick="location.reload()">Back to log-in</button></form></div>`;
+    document.getElementById('fbFirst').onsubmit = e => {
+      e.preventDefault();
+      const em = document.getElementById('frEmail').value.trim(), a = document.getElementById('frPw').value, err = m => { document.getElementById('frErr').textContent = m; };
+      if (a.length < 8) return err('Use at least 8 characters.');
+      if (a !== document.getElementById('frPw2').value) return err('The two passwords do not match.');
+      auth.createUserWithEmailAndPassword(em, a).catch(x => err(x.code === 'auth/email-already-in-use' ? 'That email already has a log-in - go back and log in.' : 'Could not create the log-in: ' + x.message));
+    };
+  }
+  const origShow = showLogin;
+  showLogin = function () { origShow(); firstRunLink(); };
+
+  // Admin > Users: create a log-in for a user without signing the administrator out (separate app instance).
+  window.fbCreateLogin = async (email, password) => {
+    const sec = firebase.apps.find(a => a.name === 'creator') || firebase.initializeApp(cfg, 'creator');
+    const sa = sec.auth();
+    const pw = password || Array.from(crypto.getRandomValues(new Uint8Array(18)), b => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 56]).join('') + '#9';
+    const cred = await sa.createUserWithEmailAndPassword(email, pw);
+    const uid = cred.user.uid;
+    await sec.firestore().doc('people/' + uid).set({ email, name: email }, { merge: true }).catch(() => { });
+    await sa.signOut();
+    people = null;
+    if (!password) await auth.sendPasswordResetEmail(email);
+    return uid;
+  };
+  window.fbResetEmail = email => auth.sendPasswordResetEmail(email);
   window.fbSignOut = () => auth.signOut().then(() => location.reload());
   window.fbChangePassword = () => {
     const u = auth.currentUser; if (!u || !u.email) return;
@@ -2273,7 +2315,7 @@ ACT.saveSettings = () => {
 view('users', 'Users', 'Users', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="editUser">+ New user</button>');
   if (SHARED) setTimeout(fillPeople);
-  return (HOST === 'firebase' ? `<p class="muted">Each user is linked to a log-in account. Create the account (email + password) in the Firebase console under Authentication &gt; Users and give the person their password. When they log in for the first time they ask to be linked to their user; approve the request here. To block a leaver set Active to N here and disable the account in Firebase - never delete a user who has worked.</p>`
+  return (HOST === 'firebase' ? `<p class="muted">Open a user and click <b>Create log-in</b>: the log-in is created for the user's email and the person receives an email to set their own password. They then open the app, log in and see the pages of their role. To block a leaver set Active to N - their log-in then sees no data. Never delete a user who has worked.</p>`
     : SHARED ? `<p class="muted">Each user is linked to a person on claude.ai: that person opens the app and sees the pages of the user's role, with no password. Share the app with them as <b>Contributor</b> (Share menu), then open the user here and link the person. Set Active to N to block a leaver - never delete a user who has worked.</p>`
     : `<p class="muted">Add a user, then Set / reset password and give the temporary password personally; the user changes it at the first log-in. Set Active to N to block a leaver - never delete a user who has worked.</p>`) + table('users', [
     { h: 'User ID', v: u => `<b>${esc(u.id)}</b>` }, { h: 'Full name', v: u => esc(u.name) }, { h: 'Designation', v: u => esc(u.desig) }, { h: 'Role', v: u => esc(u.role) },
@@ -2302,9 +2344,42 @@ ACT.editUser = id => {
       if (S.users.some(x => x !== u && x.cid === u.reqCid)) return toast('That person is already linked to another user.', 'bad');
       u.cid = u.reqCid; u.reqCid = ''; closeModal(); commit('Link request approved', u.id); render(); toast(u.id + ' is now linked. Their page opens by itself.', 'ok');
     } }, SHARED && !isNew && u.reqCid && !u.cid && { l: 'Reject request', fn: () => { u.reqCid = ''; closeModal(); commit('Link request rejected', u.id); render(); } },
+    HOST === 'firebase' && !u.cid && { l: 'Create log-in', cls: 'pri', fn: b => fbCreateLoginModal(u, isNew, b) },
+    HOST === 'firebase' && u.cid && { l: 'Email a password reset', fn: () => {
+      const em = (u.contact || '').trim(); if (!/@/.test(em)) return toast('Put the person\'s email in Phone / e-mail first.', 'bad');
+      fbResetEmail(em).then(() => toast('Password reset email sent to ' + em + '.', 'ok'), e => toast('Could not send: ' + e.message, 'bad'));
+    } },
     !isNew && !SHARED && { l: 'Set / reset password', fn: () => modal('Temporary password for ' + u.id, `<p>Give this temporary password to ${esc(u.name)} personally. They must change it at the first log-in.</p><div class="grid"><div class="fld"><label>Temporary password (min. ${S.settings.minPwd})</label><input type="password" id="tp1" autocomplete="new-password"></div><div class="fld"><label>Repeat</label><input type="password" id="tp2" autocomplete="new-password"></div></div>`,
       [{ l: 'Set password', cls: 'pri', fn: () => { const a = $('#tp1').value; if (a.length < S.settings.minPwd) return toast('Too short.', 'bad'); if (a !== $('#tp2').value) return toast('The two entries do not match.', 'bad'); u.salt = uid() + uid(); u.hash = pwdCode(a, u.salt); u.mustChange = true; closeModal(); commit('Password reset', u.id); render(); toast('Temporary password set for ' + u.id + '.', 'ok'); } }]) }]);
 };
+// Firebase: create the person's log-in from the app (the user's details in the open dialog are saved with it)
+function fbCreateLoginModal(u, isNew, body) {
+  const o = Object.assign({}, u); readInto(body, o); o.id = (o.id || '').toUpperCase().replace(/\s+/g, '');
+  if (!o.id || !o.name) return toast('User ID and name are required.', 'bad');
+  if (isNew && S.users.some(x => x.id === o.id)) return toast('That user ID exists.', 'bad');
+  const em0 = /@/.test(o.contact || '') ? o.contact.trim() : '';
+  modal('Create log-in for ' + o.id + ' - ' + o.name, `<p>The person logs in with this email. Choose how they get their password.</p>
+    <div class="grid"><div class="fld full"><label for="clEm">Log-in email</label><input id="clEm" type="email" value="${esc(em0)}"></div>
+    <div class="fld full"><label class="chk"><input type="radio" name="clHow" value="mail" checked> Email them a link to set their own password (recommended)</label>
+    <label class="chk"><input type="radio" name="clHow" value="pw"> I set a starting password and give it to them</label></div>
+    <div class="fld"><label for="clPw">Starting password (min. 8)</label><input id="clPw" type="password" autocomplete="new-password"></div></div>`,
+    [{ l: 'Create log-in', cls: 'pri', fn: async () => {
+      const em = $('#clEm').value.trim(), how = document.querySelector('input[name=clHow]:checked').value, pw = $('#clPw').value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return toast('Enter a valid email.', 'bad');
+      if (how === 'pw' && pw.length < 8) return toast('The starting password needs at least 8 characters.', 'bad');
+      toast('Creating the log-in...', 'warn');
+      try {
+        const cid = await fbCreateLogin(em, how === 'pw' ? pw : null);
+        const t = isNew ? o : u;
+        Object.assign(t, o, { cid, contact: em, reqCid: '' });
+        if (isNew) S.users.push(t);
+        closeModal(); commit('Log-in created', t.id + ' ' + em); render();
+        toast(how === 'pw' ? 'Log-in created for ' + em + '. Give them the password personally.' : 'Log-in created. ' + em + ' has been emailed a link to set the password.', 'ok');
+      } catch (e) {
+        toast(e.code === 'auth/email-already-in-use' ? 'That email already has a log-in. Ask the person to log in once, then link it with the search under Linked log-in.' : e.code === 'auth/admin-restricted-operation' || e.code === 'auth/operation-not-allowed' ? 'Creating log-ins is switched off in Firebase. Ask your setup contact to enable it.' : 'Could not create the log-in: ' + e.message, 'bad');
+      }
+    } }]);
+}
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
   return `<p class="muted">E = can make entries, V = view only, H = hidden. Admin always has full access. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(S.access[m].Admin) : `<select class="ar r${S.access[m][r]}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], S.access[m][r], false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -2367,7 +2442,8 @@ ACT.resetAll = () => confirmBox('Reset to example data?', SHARED ? 'The shared d
 // Registers stored as records (key field), grouped into chunk documents of up to ~100 records.
 const REC = { pos: 'no', advances: 'no', grns: 'no', srns: 'no', bills: 'no', issues: 'no', jobs: 'no', numlog: 'no', laundry: 'id', ppm: 'id', rooms: 'no', users: 'id', items: 'code', vendors: 'code', audit: 'k' };
 // Configuration kept as one document each.
-const CFG = ['settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain', 'meta'];
+// meta first: on Firebase it carries the owner, which the database rules check for every later write
+const CFG = ['meta', 'settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain'];
 
 let DB = null, USR = null, ME = { id: null, name: '' }, IS_OWNER = false, READONLY = false, READY = false;
 let writeQ = Promise.resolve(), writing = 0, writeErr = '', PENDING = false, gateMsg = '', bootTimer = null;
@@ -2420,6 +2496,21 @@ function syncOut() {
     });
     Object.entries(upd).forEach(([p, rows]) => queue({ path: p, kind: EXIST.has(p) ? 'update' : 'set', body: { rows } }));
   });
+  syncMembers();
+}
+// Firebase: the database rules let a log-in see data only when members/<login id> is active.
+// The Admin's app keeps those documents in step with Admin > Users (linked, active, role).
+const MSYNC = {};
+function syncMembers() {
+  if (HOST !== 'firebase' || !U || !S || !(U.role === 'Admin' || IS_OWNER) || READONLY) return;
+  const live = new Set();
+  (S.users || []).forEach(u => {
+    if (!u.cid) return;
+    live.add(u.cid);
+    const v = { active: u.active === 'Y', role: u.role, userId: u.id }, j = stable(v);
+    if (MSYNC[u.cid] !== j) { MSYNC[u.cid] = j; queue({ path: 'members/' + u.cid, kind: 'set', body: v }); }
+  });
+  Object.keys(MSYNC).forEach(cid => { if (!live.has(cid) && !/"active":false/.test(MSYNC[cid])) { const v = { active: false, role: '', userId: '' }; MSYNC[cid] = stable(v); queue({ path: 'members/' + cid, kind: 'set', body: v }); } });
 }
 function queue(op) {
   writing++; updSync();
@@ -2448,7 +2539,14 @@ async function doWrite(op, again) {
 
 /* ---------- reading ---------- */
 function subscribe() {
-  const err = e => { writeErr = e.code; updSync(); if (!READY) { gateMsg = 'The shared data could not be loaded (' + e.code + '). Reload the page to try again.'; renderGate(); } };
+  const err = e => {
+    writeErr = e.code; updSync();
+    if (READY) return;
+    gateMsg = HOST === 'firebase' && e.code === 'invalid_argument'
+      ? 'Your log-in (' + (ME.name || 'this account') + ') is not linked to a user in this app yet. Ask the Head of Accounts to link it in Admin > Users, then reload this page.'
+      : 'The shared data could not be loaded (' + e.code + '). Reload the page to try again.';
+    renderGate();
+  };
   DB.collection('cfg').onSnapshot(s => {
     REMOTE.cfg = {}; s.docs.forEach(d => { REMOTE.cfg[d.id] = clone((d.data() || {}).v); });
     if (!s.metadata.fromCache) GOT.cfg = true; onRemote();
@@ -2532,11 +2630,11 @@ if (SHARED) allocNumber = async type => {
 /* ---------- identity: claude.ai person -> app user ---------- */
 function resolveUser() {
   U = S.users.find(u => u.cid && u.cid === ME.id && u.active === 'Y') || null;
-  if (U) return route();
+  if (U) { syncMembers(); return route(); }
   renderGate();
 }
 function renderGate() {
-  const card = inner => { document.getElementById('app').innerHTML = `<div class="login"><div class="lcard"><div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>Maintenance &amp; Housekeeping</h1>${inner}</div></div>`; };
+  const card = inner => { document.getElementById('app').innerHTML = `<div class="login"><div class="lcard"><div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>Maintenance &amp; Housekeeping</h1>${inner}${HOST === 'firebase' && DB ? '<button class="btn ghost full" data-act="logout">Log out</button>' : ''}</div></div>`; };
   if (gateMsg) return card(`<p>${esc(gateMsg)}</p>`);
   if (!READY) return card('<p class="muted">Loading the shared data...</p>');
   const who = esc(ME.name || 'you');
@@ -2572,7 +2670,10 @@ ACT.cancelReq = () => { S.users.forEach(x => { if (x.reqCid === ME.id) x.reqCid 
 ACT.setupData = which => {
   if (!IS_OWNER || S) return;
   const d = seedData();
-  d.users.forEach(u => { u.hash = null; u.salt = null; u.cid = ''; });
+  // users already loaded into the database (kept out of the public page) take the place of the placeholders
+  const pre = Object.values(REMOTE.rec.users || {}).flatMap(rows => Object.values(rows)).sort((a, b) => (+a.o || 0) - (+b.o || 0)).map(w => clone(w.r));
+  if (pre.length) d.users = pre;
+  d.users.forEach(u => { u.hash = null; u.salt = null; u.cid = u.cid || ''; });
   if (which === 'empty') {
     ['pos', 'advances', 'grns', 'srns', 'bills', 'issues', 'jobs', 'laundry', 'ppm', 'items', 'vendors'].forEach(k => d[k] = d[k].filter(r => !r.ex));
     d.mpl.rows = []; d.numlog = []; d.counts = {}; d.linenCounts = {}; d.meta.examples = false;
@@ -2581,7 +2682,9 @@ ACT.setupData = which => {
   }
   d.meta.ownerUid = ME.id;
   d.audit = [{ t: nowDT(), user: ME.name || 'Owner', action: 'App set up', details: which === 'empty' ? 'Empty (go-live)' : 'October 2026 example data' }];
-  S = d; recalc(); saveData(); renderGate();
+  S = d; recalc(); saveData();
+  if (HOST === 'firebase') queue({ path: 'public/status', kind: 'set', body: { setup: true, at: nowDT() } });
+  renderGate();
 };
 ACT.linkMe = () => {
   const u = S.users.find(x => x.id === $('#lnU').value); if (!u || !IS_OWNER) return;
