@@ -1,0 +1,3 @@
+# Local Cloudflare (wrangler) test files
+.wrangler/
+node_modules/

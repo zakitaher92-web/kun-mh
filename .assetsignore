@@ -4,6 +4,7 @@
 .wrangler
 node_modules
 .assetsignore
+.gitignore
 wrangler.jsonc
 README.md
 firestore.rules
