@@ -1,0 +1,9 @@
+# Files that are in the repository but must not be published on the website
+.git
+.github
+.wrangler
+node_modules
+.assetsignore
+wrangler.jsonc
+README.md
+firestore.rules

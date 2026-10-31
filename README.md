@@ -10,6 +10,8 @@ The app is hosted on GitHub Pages; all records are kept in the organisation's Fi
 | `index.html` | The whole app |
 | `config.js` | Connection to the Firebase project (paste your values here) |
 | `firestore.rules` | Database rules to paste into the Firebase console |
+| `wrangler.jsonc` | Cloudflare Worker settings (the site at kun-mh....workers.dev) |
+| `.assetsignore` | Files kept off the website (README, rules, settings) |
 
 ## Set-up (about 20 minutes, once)
 
@@ -42,3 +44,8 @@ The app is hosted on GitHub Pages; all records are kept in the organisation's Fi
 - Backup: **Admin > Data > Download backup** at least weekly.
 - New version of the app: upload the new `index.html` to the repository (replace the file). `config.js` stays as it is.
 - Costs: the Firebase free plan (Spark) is enough for a team of this size.
+
+## Cloudflare (workers.dev) site
+The Worker `kun-mh` serves `index.html` and `config.js` as static files (`wrangler.jsonc`).
+One-time link: Cloudflare dashboard > Workers & Pages > **kun-mh** > **Settings > Builds** > **Connect** > GitHub > repository `kun-mh`, branch `main`.
+Leave the build command empty and the deploy command `npx wrangler deploy`. After that every push to `main` is live within a minute or two.
