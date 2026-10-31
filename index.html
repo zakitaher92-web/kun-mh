@@ -1594,7 +1594,7 @@ function printJob(j) {
 /* ===== MH-23 PPM & AMC ===== */
 view('ppm', 'PPM schedule & AMC register', 'PPM AMC', 'Maintenance', 'MH-23', () => {
   const ed = canEdit('PPM AMC') && may('Maintenance Masool');
-  setTimeout(() => { const t = $('#vtools'); if (t && ed) t.innerHTML = `<button class="btn pri" data-act="editPPM">+ Add equipment</button>`; });
+  setTimeout(() => { const t = $('#vtools'); if (t && ed) t.innerHTML = `<button class="btn pri" data-act="editPPM">+ Add equipment</button>` + impBtn('ppm'); });
   return `<p class="muted">Update "Last done" after each service (with the service report or SRN). Flags: overdue or due within ${S.settings.ppmWindow} days; AMC renewal PO at least ${S.settings.amcWarn} days before expiry.</p>` + table('ppm', [
     { h: 'Equipment / asset', v: p => `<b>${esc(p.asset)}</b>` }, { h: 'Asset tag', v: p => esc(p.tag) }, { h: 'Location', v: p => esc(p.location) },
     { h: 'Activity', v: p => esc(p.activity) }, { h: 'Frequency', v: p => esc(p.freq) }, { h: 'Done by', v: p => esc(p.doneBy) },
@@ -2172,7 +2172,7 @@ ACT.editLaundry = id => {
 const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.mpl.rows.some(r => r.item === code);
 view('items', 'Item & service master', 'Items', 'Masters', 'MH-03', () => {
   const ed = canEdit('Items');
-  tools(ed ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '');
+  tools((ed ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
   return `<p class="muted">The only place items, services and norms are defined. Kept by the Head of Accounts on the Masool's request. Never rename an item once used - add a new one. Norms and par levels are indicative starting values.</p>` + table('items', [
     { h: 'Code', v: i => `<b>${esc(i.code)}</b>` }, { h: 'Item / service', v: i => esc(i.name) }, { h: 'Category', v: i => esc(i.cat) }, { h: 'Budget line', v: i => esc(itemLine(i.code)) },
     { h: 'Type', v: i => esc(itemType(i.code)) }, { h: 'Unit', v: i => esc(i.unit) }, { h: 'HK norm / 100 zd', n: 1, v: i => fmtQ(i.norm) }, { h: 'Linen par / bed', n: 1, v: i => fmtQ(i.par) },
@@ -2198,7 +2198,7 @@ ACT.editItem = code => {
 /* ===== MH-04 Vendors ===== */
 view('vendors', 'Approved vendor list', 'Vendors', 'Masters', 'MH-04', () => {
   const ed = canEdit('Vendors');
-  tools(ed ? '<button class="btn pri" data-act="editVendor">+ New vendor</button>' : '');
+  tools((ed ? '<button class="btn pri" data-act="editVendor">+ New vendor</button>' : '') + impBtn('vendors'));
   return `<p class="muted">Vendors join the list only after Head of Accounts approval. Bank details are verified from the vendor's letter before the first payment.</p>` + table('vendors', [
     { h: 'Code', v: v => `<b>${esc(v.code)}</b>` }, { h: 'Vendor / contractor', v: v => esc(v.name) }, { h: 'Type', v: v => esc(v.type) }, { h: 'Supplies', v: v => esc(v.supplies) },
     { h: 'Contact', v: v => esc(v.contact) }, { h: 'Phone', v: v => esc(v.phone) }, { h: 'On AVL', v: v => flag(v.avl === 'Y' ? 'OK' : 'Not on AVL') }, { h: 'Bank (verified)', v: v => esc(v.bank) }, { h: 'Remarks', v: v => esc(v.remarks) },
@@ -2229,7 +2229,7 @@ function mplCheck(r) {
 }
 view('mpl', 'Master price list', 'MPL', 'Masters', 'MH-05', () => {
   const m = S.mpl, ed = canEdit('MPL') && m.status !== 'Approved';
-  tools((canEdit('MPL') ? (m.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : '<button class="btn pri" data-act="approveMPL">Approve MPL</button>') : '') + (ed ? '<button class="btn ghost" data-act="editMPL">+ Add rate</button>' : ''));
+  tools((canEdit('MPL') ? (m.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : '<button class="btn pri" data-act="approveMPL">Approve MPL</button>') : '') + (ed ? '<button class="btn ghost" data-act="editMPL">+ Add rate</button>' : '') + impBtn('mpl'));
   return `<div class="sum">Status ${flag(m.status === 'Approved' ? 'Approved' : m.status)} &middot; Version ${m.version} &middot; Prepared by ${esc(m.preparedBy)} ${fdate(m.preparedOn)} &middot; Approved by ${esc(m.approvedBy || '-')} ${fdt(m.approvedOn)} &middot; Valid until ${fdate(m.validUntil)}</div>
   <p class="muted">Rates from quotations (normally three). Approved by the Head of Accounts with the approval password - the list is then LOCKED. To change a rate: Revise MPL (password + reason), edit, then approve again as a new version. Every PO line is checked against these rates (tolerance ${pct(S.settings.priceTol)}).</p>` + table('mpl', [
     { h: 'Item code', v: r => esc(r.item) }, { h: 'Item / service', v: r => esc(itemName(r.item)) }, { h: 'Unit', v: r => esc((item(r.item) || {}).unit) }, { h: 'Vendor', v: r => esc(r.vendor) },
@@ -2313,7 +2313,7 @@ ACT.saveSettings = () => {
 
 /* ===== Admin: users, access, logs, data ===== */
 view('users', 'Users', 'Users', 'Admin', 'Admin', () => {
-  tools('<button class="btn pri" data-act="editUser">+ New user</button>');
+  tools('<button class="btn pri" data-act="editUser">+ New user</button>' + impBtn('users'));
   if (SHARED) setTimeout(fillPeople);
   return (HOST === 'firebase' ? `<p class="muted">Open a user and click <b>Create log-in</b>: the log-in is created for the user's email and the person receives an email to set their own password. They then open the app, log in and see the pages of their role. To block a leaver set Active to N - their log-in then sees no data. Never delete a user who has worked.</p>`
     : SHARED ? `<p class="muted">Each user is linked to a person on claude.ai: that person opens the app and sees the pages of the user's role, with no password. Share the app with them as <b>Contributor</b> (Share menu), then open the user here and link the person. Set Active to N to block a leaver - never delete a user who has worked.</p>`
@@ -2393,6 +2393,7 @@ view('numlog', 'Number log', 'Number Log', 'Admin', 'Log', () => `<p class="mute
 view('data', 'Data, backup & go-live', 'Users', 'Admin', 'Admin', () => `
   <section class="card"><h3>Backup and restore</h3><p>${SHARED ? 'All data is kept in the app\'s shared database, the same for every user. Download a backup at least weekly and keep it on the shared drive. Restoring replaces the shared data for everyone.' : 'All data lives in this browser on this computer. Download a backup at the end of every working day and keep it on the shared drive. Restoring replaces everything here with the backup.'}</p>
   <button class="btn pri" data-act="backup">Download backup (.json)</button> <label class="btn">Restore from backup<input type="file" accept=".json,application/json" hidden onchange="App.restore(this)"></label></section>
+  <section class="card"><h3>Import master data from Excel</h3><p>Items, vendors, MPL rates, budget lines, rooms, PPM equipment and users can be brought in from an Excel sheet. Download the template, fill it in and import it - every row is shown for checking before it is saved.</p><button class="btn pri" data-act="goto" data-id="import">Open Import from Excel</button></section>
   <section class="card"><h3>Go-live</h3><p>At go-live (after the pilot) the Head of Accounts removes the October 2026 example rows and example numbers. Masters (items, vendors, MPL) are cleared separately so the real lists can be entered.</p>
   <button class="btn danger" data-act="clearEx" data-id="tx">Clear example transactions &amp; numbers</button> <button class="btn danger" data-act="clearEx" data-id="masters">Clear example items, vendors &amp; MPL</button></section>
   <section class="card"><h3>Reset</h3><p>Reload the original example data (pilot / training). Users and passwords are reset too.</p><button class="btn danger" data-act="resetAll">Reset to example data</button></section>`);
@@ -2731,6 +2732,500 @@ async function sharedStart() {
   subscribe();
 }
 
+</script>
+<script>
+/* ---- import.js ---- */
+/* Import master data from Excel (.xlsx) or CSV, and Excel templates to fill in.
+   Self-contained: reads and writes .xlsx with the browser's own unzip, no outside library. */
+
+/* ---------- zip / xlsx reading ---------- */
+async function inflateRaw(u8) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('this browser cannot open .xlsx files - save the sheet as CSV (File > Save As > CSV UTF-8) and import that');
+  const s = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function unzip(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength), out = {};
+  let e = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('the file is not a valid .xlsx workbook');
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
+  const dec = new TextDecoder();
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nl));
+    const start = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+    const raw = buf.subarray(start, start + csize);
+    out[name.replace(/^\//, '')] = { method, raw };
+    p += 46 + nl + xl + cl;
+  }
+  return {
+    has: f => !!out[f],
+    text: async f => { const z = out[f]; if (!z) return null; const d = z.method === 0 ? z.raw : z.method === 8 ? await inflateRaw(z.raw) : null; if (!d) throw new Error('unsupported compression in the workbook'); return dec.decode(d); },
+  };
+}
+const xmlDoc = t => new DOMParser().parseFromString(t, 'application/xml');
+const tags = (el, n) => [...el.getElementsByTagNameNS('*', n)];
+async function readXlsx(buf) {
+  const z = await unzip(buf);
+  const wbx = await z.text('xl/workbook.xml'); if (!wbx) throw new Error('no workbook found in the file');
+  const relx = await z.text('xl/_rels/workbook.xml.rels'), rels = {};
+  if (relx) tags(xmlDoc(relx), 'Relationship').forEach(r => { rels[r.getAttribute('Id')] = r.getAttribute('Target'); });
+  const ssx = await z.text('xl/sharedStrings.xml');
+  const ss = ssx ? tags(xmlDoc(ssx), 'si').map(si => tags(si, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join('')) : [];
+  const sheets = [];
+  for (const sh of tags(xmlDoc(wbx), 'sheet')) {
+    const rid = sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || sh.getAttribute('r:id');
+    let tg = rels[rid]; if (!tg) continue;
+    tg = tg.startsWith('/') ? tg.slice(1) : 'xl/' + tg.replace(/^\.\//, '');
+    const sx = await z.text(tg); if (!sx) continue;
+    const rows = [];
+    tags(xmlDoc(sx), 'row').forEach((row, ri) => {
+      const rn = +row.getAttribute('r') || ri + 1, cells = [];
+      tags(row, 'c').forEach((c, ci) => {
+        const ref = c.getAttribute('r'); let col = ci;
+        if (ref) { col = 0; for (const ch of ref.replace(/\d+/g, '')) col = col * 26 + ch.charCodeAt(0) - 64; col--; }
+        const t = c.getAttribute('t'), v = (tags(c, 'v')[0] || {}).textContent;
+        let val = '';
+        if (t === 's') val = ss[+v] ?? '';
+        else if (t === 'inlineStr') val = tags(c, 't').map(x => x.textContent).join('');
+        else if (t === 'b') val = v === '1' ? 'TRUE' : 'FALSE';
+        else if (t === 'str') val = v ?? '';
+        else if (t === 'e') val = '';
+        else if (v !== undefined && v !== '') val = Number(v);
+        cells[col] = val;
+      });
+      for (let i = 0; i < cells.length; i++) if (cells[i] === undefined) cells[i] = '';
+      rows[rn - 1] = cells;
+    });
+    for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = [];
+    sheets.push({ name: sh.getAttribute('name') || 'Sheet', rows });
+  }
+  if (!sheets.length) throw new Error('no worksheet found in the file');
+  return { sheets };
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '';
+  const d = [',', ';', '\t'].map(c => [c, first.split(c).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+
+/* ---------- xlsx writing (templates) ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC_T[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipStore(entries) {
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  entries.forEach(([name, data]) => {
+    const nb = enc.encode(name), crc = crc32(data);
+    const lh = new Uint8Array(30 + nb.length), a = new DataView(lh.buffer);
+    a.setUint32(0, 0x04034b50, true); a.setUint16(4, 20, true); a.setUint16(6, 0x0800, true); a.setUint16(12, 0x21, true);
+    a.setUint32(14, crc, true); a.setUint32(18, data.length, true); a.setUint32(22, data.length, true); a.setUint16(26, nb.length, true); lh.set(nb, 30);
+    const ch = new Uint8Array(46 + nb.length), b = new DataView(ch.buffer);
+    b.setUint32(0, 0x02014b50, true); b.setUint16(4, 20, true); b.setUint16(6, 20, true); b.setUint16(8, 0x0800, true); b.setUint16(14, 0x21, true);
+    b.setUint32(16, crc, true); b.setUint32(20, data.length, true); b.setUint32(24, data.length, true); b.setUint16(28, nb.length, true); b.setUint32(42, off, true); ch.set(nb, 46);
+    parts.push(lh, data); central.push(ch); off += lh.length + data.length;
+  });
+  const cd = central.reduce((s, c) => s + c.length, 0), end = new Uint8Array(22), e = new DataView(end.buffer);
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true); e.setUint32(12, cd, true); e.setUint32(16, off, true);
+  const all = parts.concat(central, [end]), out = new Uint8Array(all.reduce((s, p) => s + p.length, 0)); let o = 0;
+  all.forEach(p => { out.set(p, o); o += p.length; });
+  return out;
+}
+function xlsxBuild(sheets) {
+  const x = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', PNS = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const sheetXml = sh => head + `<worksheet xmlns="${NS}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+    + (sh.widths ? '<cols>' + sh.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>' : '')
+    + '<sheetData>' + sh.rows.map((r, ri) => `<row r="${ri + 1}">` + r.map((v, ci) => {
+      if (v === null || v === undefined || v === '') return '';
+      const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : '';
+      return typeof v === 'number' && isFinite(v) ? `<c r="${ref}"${st}><v>${v}</v></c>` : `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
+    }).join('') + '</row>').join('') + '</sheetData></worksheet>';
+  const files = [
+    ['[Content_Types].xml', head + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+    ['_rels/.rels', head + `<Relationships xmlns="${PNS}"><Relationship Id="rId1" Type="${RNS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', head + `<workbook xmlns="${NS}" xmlns:r="${RNS}"><sheets>${sheets.map((s, i) => `<sheet name="${x(s.name.slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', head + `<Relationships xmlns="${PNS}">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="${RNS}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="${RNS}/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', head + `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+  ].concat(sheets.map((s, i) => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(s)]));
+  const enc = new TextEncoder();
+  return zipStore(files.map(([n, s]) => [n, enc.encode(s)]));
+}
+
+/* ---------- what can be imported ---------- */
+const impNorm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const lc = s => String(s || '').toLowerCase();
+const IMPORTS = {
+  items: {
+    label: 'Items & services', fmt: 'MH-03', sheet: 'Items', view: 'items', match: 'Item code',
+    desc: 'Item codes, names, category, unit, HK norms, linen par, re-order levels and opening stock.',
+    can: () => canEdit('Items'), why: () => 'Needs entry rights on Items (MH-03).', list: () => S.items,
+    cols: [
+      { k: 'code', h: 'Item code', req: 1, al: ['code'], note: 'Unique, e.g. EL-004. A code already in the app updates that item.' },
+      { k: 'name', h: 'Item / service name', req: 1, al: ['name', 'item', 'item name', 'description', 'service'], note: 'Unique. Cannot change once the item is used on a PO, issue or MPL.' },
+      { k: 'cat', h: 'Category', req: 1, t: 'pick', o: () => S.categories.map(c => c.name), note: 'Fixes the budget line and whether it is a stock item or a service.' },
+      { k: 'unit', h: 'Unit', t: 'pick', o: () => S.lists.units, addNew: 1, al: ['uom'], note: 'e.g. nos, litre, set. A new unit is added to the list. Default nos.' },
+      { k: 'norm', h: 'HK norm per 100 zaereen-days', t: 'num', al: ['hk norm', 'norm'] },
+      { k: 'par', h: 'Linen par per bed', t: 'num', al: ['par', 'linen par'] },
+      { k: 'reorder', h: 'Re-order level', t: 'num', al: ['reorder'] },
+      { k: 'opening', h: 'Opening stock (qty)', t: 'num', al: ['opening', 'opening stock', 'opening qty', 'opening stock at go-live'], note: 'Physical count on the stock opening date (Settings).' },
+      { k: 'remarks', h: 'Remarks', al: ['notes'] },
+    ],
+    need: u => u.has('code') ? '' : 'The "Item code" column is missing.',
+    find: r => r.code ? S.items.find(i => lc(i.code) === lc(r.code)) : null,
+    key: r => r.code,
+    check: (r, ex, ctx, E) => {
+      if (ex) r.code = ex.code;
+      if (r.name) {
+        const o = S.items.find(i => i !== ex && lc(i.name) === lc(r.name));
+        if (o) E.push('Name already used by item ' + o.code);
+        if (ctx.names.has(lc(r.name))) E.push('Same name appears earlier in the file');
+        ctx.names.add(lc(r.name));
+        if (ex && r.name !== ex.name && usedItem(ex.code)) E.push('Item already used - its name cannot change (add a new item)');
+      }
+    },
+    blank: () => ({ code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '' }),
+    fix: o => { if (o.unit && !S.lists.units.includes(o.unit)) S.lists.units.push(o.unit); o.opening = num(o.opening); },
+    show: ['code', 'name', 'cat', 'unit', 'opening'],
+  },
+  vendors: {
+    label: 'Approved vendor list', fmt: 'MH-04', sheet: 'Vendors', view: 'vendors', match: 'Vendor code (or the name, when the code is blank)',
+    desc: 'Vendors and contractors with type, contact, phone, AVL status and verified bank details.',
+    can: () => canEdit('Vendors'), why: () => 'Needs entry rights on Vendors (MH-04).', list: () => S.vendors,
+    cols: [
+      { k: 'code', h: 'Vendor code', al: ['code'], note: 'Leave blank for a new vendor - the next V- number is given.' },
+      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'contractor', 'supplier'], note: 'Unique. Cannot change once used on a PO or bill.' },
+      { k: 'type', h: 'Type', t: 'pick', o: () => S.lists.vendorTypes, al: ['vendor type'] },
+      { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category'] },
+      { k: 'contact', h: 'Contact person', al: ['contact'] },
+      { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no'] },
+      { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Default Y.' },
+      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account'] },
+      { k: 'remarks', h: 'Remarks', al: ['notes'] },
+    ],
+    need: u => u.has('code') || u.has('name') ? '' : 'A "Vendor code" or "Vendor / contractor name" column is needed.',
+    find: r => r.code ? S.vendors.find(v => lc(v.code) === lc(r.code)) || null : r.name ? S.vendors.find(v => lc(v.name) === lc(r.name)) || null : null,
+    key: r => r.code || r.name,
+    check: (r, ex, ctx, E) => {
+      if (ex && r.code) r.code = ex.code;
+      if (!ex && !r.code) r.code = ctx.nextVendor();
+      if (r.name) {
+        const o = S.vendors.find(v => v !== ex && lc(v.name) === lc(r.name));
+        if (o) E.push('Name already used by vendor ' + o.code);
+        if (ctx.names.has(lc(r.name))) E.push('Same name appears earlier in the file');
+        ctx.names.add(lc(r.name));
+        if (ex && r.name !== ex.name && (S.pos.some(p => p.vendor === ex.name) || S.bills.some(b => b.vendor === ex.name))) E.push('Vendor already used - its name cannot change');
+      }
+    },
+    blank: () => ({ code: '', name: '', type: 'Supplier', supplies: '', contact: '', phone: '', avl: 'Y', bank: '', remarks: '' }),
+    show: ['code', 'name', 'type', 'phone', 'avl'],
+  },
+  mpl: {
+    label: 'Master price list rates', fmt: 'MH-05', sheet: 'MPL', view: 'mpl', match: 'Item code + vendor',
+    desc: 'Approved rate per item and vendor, with validity and basis. Import items and vendors first.',
+    can: () => canEdit('MPL') && S.mpl.status !== 'Approved',
+    why: () => S.mpl.status === 'Approved' && canEdit('MPL') ? 'The MPL is approved and locked - click Revise MPL on the MPL page first, then import, then approve again.' : 'Needs entry rights on the MPL (MH-05).',
+    list: () => S.mpl.rows,
+    cols: [
+      { k: 'item', h: 'Item code', req: 1, t: 'pick', o: () => S.items.map(i => [i.code, i.name]), al: ['item', 'code'], note: 'An item code (or exact item name) from the Items list.' },
+      { k: 'vendor', h: 'Vendor', req: 1, t: 'pick', o: () => S.vendors.map(v => [v.name, v.code]), al: ['vendor name', 'vendor code', 'supplier'], note: 'A vendor name (or vendor code) from the vendor list.' },
+      { k: 'rate', h: 'Approved rate (IQD)', req: 1, t: 'num', al: ['rate', 'approved rate'] },
+      { k: 'prev', h: 'Previous rate (IQD)', t: 'num', al: ['previous rate', 'prev rate', 'old rate'] },
+      { k: 'from', h: 'Valid from', t: 'date', note: 'Default today.' },
+      { k: 'to', h: 'Valid to', t: 'date', note: 'Default: the MPL valid-until date.' },
+      { k: 'basis', h: 'Basis (quotes compared / remarks)', al: ['basis', 'remarks'] },
+    ],
+    need: u => u.has('item') && u.has('vendor') ? '' : 'The "Item code" and "Vendor" columns are both needed.',
+    find: r => r.item && r.vendor ? S.mpl.rows.find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
+    key: r => (r.item || '') + ' | ' + (r.vendor || ''),
+    check: (r, ex, ctx, E) => {
+      if (r.rate !== undefined && r.rate <= 0) E.push('Rate must be above zero');
+      const f = r.from || (ex && ex.from), t = r.to || (ex && ex.to);
+      if (f && t && t < f) E.push('Valid to is before valid from');
+    },
+    blank: () => ({ item: '', vendor: '', rate: null, from: isoDate(new Date()), to: S.mpl.validUntil, prev: null, basis: '' }),
+    show: ['item', 'vendor', 'rate', 'from', 'to'],
+  },
+  budget: {
+    label: 'Budget lines', fmt: 'MH-01 / 02', sheet: 'Budget lines', view: 'settings', match: 'Code',
+    desc: 'Budget line code, name, basis (FIX / VAR) and annual budget in IQD.',
+    can: () => canEdit('Settings') && !S.settings.locked,
+    why: () => canEdit('Settings') ? 'Settings are locked - unlock them first on the Settings page (approval password).' : 'Admin only (Settings MH-01).',
+    list: () => S.budgetLines,
+    cols: [
+      { k: 'code', h: 'Code', req: 1, al: ['budget line code', 'line code', 'line'] },
+      { k: 'name', h: 'Budget line', req: 1, al: ['name', 'budget line name', 'description'] },
+      { k: 'basis', h: 'Basis (FIX / VAR)', t: 'pick', o: () => ['FIX', 'VAR'], al: ['basis'], note: 'VAR follows zaereen-days; FIX follows calendar days. Default FIX.' },
+      { k: 'annual', h: 'Annual budget (IQD)', req: 1, t: 'num', al: ['annual', 'annual budget', 'budget'] },
+    ],
+    need: u => u.has('code') ? '' : 'The "Code" column is missing.',
+    find: r => r.code ? S.budgetLines.find(b => lc(b.code) === lc(r.code)) || null : null,
+    key: r => r.code,
+    check: (r, ex) => { if (ex) r.code = ex.code; },
+    blank: () => ({ code: '', name: '', basis: 'FIX', annual: 0 }),
+    show: ['code', 'name', 'basis', 'annual'],
+  },
+  rooms: {
+    label: 'Rooms', fmt: 'Service desk', sheet: 'Rooms', view: 'desk', match: 'Room no.', replace: true,
+    desc: 'The real room list: room number, floor, beds, standard and current configuration, status.',
+    can: () => U && U.role === 'Admin' && canEdit('Rooms'), why: () => 'Admin only.', list: () => S.rooms,
+    cols: [
+      { k: 'no', h: 'Room no.', req: 1, al: ['room', 'room no', 'room number', 'no'] },
+      { k: 'floor', h: 'Floor', t: 'num', note: 'Blank: taken from the room number (e.g. 305 is floor 3).' },
+      { k: 'beds', h: 'Beds', req: 1, t: 'num', al: ['no of beds', 'beds per room'] },
+      { k: 'std', h: 'Standard configuration', al: ['standard', 'standard config'], note: 'Default "<beds> single beds".' },
+      { k: 'config', h: 'Current configuration', t: 'pick', o: () => S.lists.configs, al: ['configuration', 'config'], note: 'Default Standard.' },
+      { k: 'status', h: 'Room status', t: 'pick', o: () => S.lists.roomStatus, al: ['status'], note: 'Default Ready.' },
+      { k: 'notes', h: 'Guest needs / notes', al: ['notes', 'remarks'] },
+    ],
+    need: u => u.has('no') ? '' : 'The "Room no." column is missing.',
+    find: r => r.no ? S.rooms.find(x => lc(x.no) === lc(r.no)) || null : null,
+    key: r => r.no,
+    check: (r, ex, ctx, E) => { if (ex) r.no = ex.no; if (r.beds !== undefined && r.beds <= 0) E.push('Beds must be above zero'); if (r.floor !== undefined) r.floor = Math.round(r.floor); },
+    blank: () => ({ no: '', floor: null, beds: 0, std: '', config: 'Standard', status: 'Ready', notes: '' }),
+    fix: o => { if (!o.floor) { const n = parseInt(o.no, 10); o.floor = n >= 100 ? Math.floor(n / 100) : 1; } if (!o.std) o.std = o.beds + ' single beds'; o.beds = num(o.beds); },
+    after: () => S.rooms.sort((a, b) => (a.floor - b.floor) || String(a.no).localeCompare(String(b.no), undefined, { numeric: true })),
+    show: ['no', 'floor', 'beds', 'config', 'status'],
+  },
+  ppm: {
+    label: 'PPM equipment & AMC', fmt: 'MH-23', sheet: 'PPM', view: 'ppm', match: 'Asset tag (or the equipment name, when the tag is blank)',
+    desc: 'Equipment, asset tag, activity, frequency, AMC vendor, AMC expiry and last service date.',
+    can: () => canEdit('PPM AMC') && may('Maintenance Masool'), why: () => 'Needs entry rights on PPM AMC (Maintenance Masool).', list: () => S.ppm,
+    cols: [
+      { k: 'asset', h: 'Equipment / asset', req: 1, al: ['equipment', 'asset', 'asset name'] },
+      { k: 'tag', h: 'Asset tag', al: ['tag', 'asset code'] },
+      { k: 'location', h: 'Location' },
+      { k: 'activity', h: 'Activity', al: ['ppm activity', 'service activity'] },
+      { k: 'freq', h: 'Frequency', t: 'pick', o: () => S.lists.freqs, note: 'Default Monthly.' },
+      { k: 'doneBy', h: 'Done by', t: 'pick', o: () => S.lists.doneBy, note: 'Default In-house.' },
+      { k: 'amcVendor', h: 'AMC vendor / contractor', t: 'pick', o: () => S.vendors.map(v => [v.name, v.code]), al: ['amc vendor', 'contractor'], note: 'A vendor name (or code) from the vendor list.' },
+      { k: 'amcPo', h: 'AMC / contract PO no.', al: ['amc po', 'po no', 'contract po'] },
+      { k: 'amcExpiry', h: 'AMC expiry', t: 'date', al: ['amc expiry date', 'expiry'] },
+      { k: 'last', h: 'Last done', t: 'date', al: ['last service', 'last done on', 'last service date'] },
+      { k: 'remarks', h: 'Remarks', al: ['notes'] },
+    ],
+    need: u => u.has('asset') || u.has('tag') ? '' : 'An "Equipment / asset" or "Asset tag" column is needed.',
+    find: r => r.tag ? S.ppm.find(p => lc(p.tag) === lc(r.tag)) || null : r.asset ? S.ppm.find(p => lc(p.asset) === lc(r.asset)) || null : null,
+    key: r => r.tag || r.asset,
+    blank: () => ({ id: 'P' + uid(), asset: '', tag: '', location: '', activity: '', freq: 'Monthly', doneBy: 'In-house', amcVendor: '', amcPo: '', amcExpiry: '', last: '', remarks: '' }),
+    show: ['asset', 'tag', 'freq', 'doneBy', 'last'],
+  },
+  users: {
+    label: 'Users', fmt: 'Admin', sheet: 'Users', view: 'users', match: 'User ID',
+    desc: 'User ID, name, designation, role and active flag. Passwords / linked people are then set in Admin > Users.',
+    can: () => canEdit('Users'), why: () => 'Admin only.', list: () => S.users,
+    cols: [
+      { k: 'id', h: 'User ID', req: 1, t: 'up', al: ['id', 'user', 'userid'], note: 'No spaces; stored in capitals.' },
+      { k: 'name', h: 'Full name', req: 1, al: ['name'] },
+      { k: 'desig', h: 'Designation', al: ['desig', 'title'] },
+      { k: 'role', h: 'Role', req: 1, t: 'pick', o: () => ROLES, note: 'Decides the pages the user sees (Access rights).' },
+      { k: 'active', h: 'Active (Y/N)', t: 'yn', al: ['active'], note: 'N blocks the user. Default Y.' },
+      { k: 'contact', h: 'Phone / e-mail', al: ['contact', 'phone', 'email', 'e-mail'] },
+    ],
+    need: u => u.has('id') ? '' : 'The "User ID" column is missing.',
+    find: r => r.id ? S.users.find(x => x.id === r.id) || null : null,
+    key: r => r.id,
+    check: (r, ex, ctx, E) => { if (ex && ex === U && ((r.role && r.role !== 'Admin') || r.active === 'N')) E.push('You cannot remove your own Admin role or block yourself'); },
+    blank: () => ({ id: '', name: '', desig: '', role: 'Maintenance Masool', active: 'Y', mustChange: true, lastLogin: '', contact: '', hash: null, salt: null, cid: '' }),
+    show: ['id', 'name', 'role', 'active'],
+  },
+};
+
+/* ---------- converting and checking rows ---------- */
+function impDate(v) {
+  if (typeof v === 'number') { if (v < 1 || v > 100000) return { err: '"' + v + '" is not a date' }; return { v: new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10) }; }
+  const s = String(v).trim(); let y, m, d, x;
+  const mon = t => MON.findIndex(n => n.toLowerCase() === t.slice(0, 3).toLowerCase()) + 1;
+  if ((x = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(s))) [y, m, d] = [+x[1], +x[2], +x[3]];
+  else if ((x = /^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{2,4})$/.exec(s))) [d, m, y] = [+x[1], +x[2], +x[3]];
+  else if ((x = /^(\d{1,2})[-/ ]([A-Za-z]{3,9})[-/ ,]+(\d{2,4})$/.exec(s))) [d, m, y] = [+x[1], mon(x[2]), +x[3]];
+  else return { err: '"' + s + '" is not a date (use dd-mm-yyyy)' };
+  if (y < 100) y += 2000;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!m || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return { err: '"' + s + '" is not a valid date (use dd-mm-yyyy)' };
+  return { v: dt.toISOString().slice(0, 10) };
+}
+function impConv(c, v) {
+  switch (c.t) {
+    case 'num': {
+      if (typeof v === 'number') return { v };
+      const s = String(v).replace(/[,\s]/g, '');
+      return /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? { v: parseFloat(s) } : { err: '"' + v + '" is not a number' };
+    }
+    case 'date': return impDate(v);
+    case 'yn': { const s = lc(String(v).trim()); return ['y', 'yes', 'true', '1'].includes(s) ? { v: 'Y' } : ['n', 'no', 'false', '0'].includes(s) ? { v: 'N' } : { err: 'use Y or N' }; }
+    case 'up': return { v: String(v).toUpperCase().replace(/\s+/g, '') };
+    case 'pick': {
+      const o = c.o().map(x => Array.isArray(x) ? x : [x]), n = impNorm(v);
+      const f = o.find(x => x.some(a => impNorm(a) === n));
+      if (f) return { v: f[0] };
+      if (c.addNew) return { v: String(v).trim(), warn: c.h + ' "' + String(v).trim() + '" is new - it will be added to the list' };
+      return { err: '"' + v + '" is not on the list' + (o.length <= 10 ? ' (' + o.map(x => x[0]).join(', ') + ')' : '') };
+    }
+    default: return { v: String(v).trim() };
+  }
+}
+function impPrepare(kind, table) {
+  const sp = IMPORTS[kind], cols = sp.cols;
+  const match = h => { const n = impNorm(h); return n ? cols.find(c => [c.h, c.k].concat(c.al || []).some(a => impNorm(a) === n)) || null : null; };
+  let hr = -1, map = [];
+  for (let r = 0; r < Math.min(table.length, 15); r++) {
+    const m = (table[r] || []).map(match);
+    if (m.filter(Boolean).length >= Math.min(2, cols.length)) { hr = r; map = m; break; }
+  }
+  if (hr < 0) return { err: 'No header row found. The first row must hold the column names of the template, e.g. ' + cols.slice(0, 3).map(c => '"' + c.h + '"').join(', ') + '.' };
+  const used = new Set();
+  map = map.map(c => { if (!c || used.has(c.k)) return null; used.add(c.k); return c; });
+  const ignored = (table[hr] || []).filter((h, i) => String(h ?? '').trim() && !map[i]).map(h => String(h).trim());
+  const needErr = sp.need(used); if (needErr) return { err: needErr };
+  let vn = Math.max(0, ...S.vendors.map(v => +(/^V-(\d+)$/i.exec(v.code) || [])[1] || 0));
+  const ctx = { names: new Set(), keys: new Map(), nextVendor: () => 'V-' + pad4(++vn) };
+  const rows = [];
+  for (let r = hr + 1; r < table.length; r++) {
+    const cells = table[r] || [];
+    if (!cells.some(v => String(v ?? '').trim() !== '')) continue;
+    const raw = {}, E = [], W = [];
+    map.forEach((c, i) => {
+      if (!c) return; const v = cells[i];
+      if (v === undefined || v === null || String(v).trim() === '') return;
+      const x = impConv(c, v);
+      if (x.err) E.push(c.h + ': ' + x.err); else { raw[c.k] = x.v; if (x.warn) W.push(x.warn); }
+    });
+    const ex = sp.find(raw);
+    if (!ex) cols.filter(c => c.req && raw[c.k] === undefined && !E.some(e => e.startsWith(c.h + ':'))).forEach(c => E.push(c.h + ' is needed for a new row'));
+    if (sp.check) sp.check(raw, ex, ctx, E, W);
+    const key = sp.key(raw) || '';
+    const kk = lc(key);
+    if (kk && ctx.keys.has(kk)) E.push('Same ' + sp.match.split(' (')[0].toLowerCase() + ' as row ' + ctx.keys.get(kk));
+    else if (kk) ctx.keys.set(kk, r + 1);
+    const changes = ex ? Object.keys(raw).filter(k => String(ex[k] ?? '') !== String(raw[k] ?? '')) : [];
+    const action = E.length ? 'Error' : !ex ? 'New' : changes.length ? 'Update' : 'No change';
+    rows.push({ n: r + 1, raw, ex, key, action, E, W, changes });
+  }
+  return { rows, ignored, used, hr };
+}
+
+/* ---------- screens ---------- */
+let IMP = null;   // { kind, wb, idx, name, prep, replace }
+const impColByK = (kind, k) => IMPORTS[kind].cols.find(c => c.k === k) || { h: k };
+const impShowVal = v => v === null || v === undefined || v === '' ? '<span class="muted">(blank)</span>' : esc(typeof v === 'number' ? fmtQ(v) : v);
+function impCard(kind, inModal) {
+  const sp = IMPORTS[kind], ok = sp.can();
+  return `<h3>${esc(sp.label)} <small class="muted">${esc(sp.fmt)} &middot; ${sp.list().length} rows now</small></h3>
+    <p class="small muted">${esc(sp.desc)} Matched on: ${esc(sp.match)}.</p>
+    ${ok ? `<div class="vtools"><button class="btn" data-act="impTpl" data-id="${kind}">Download Excel template</button>
+      <label class="btn pri">Import Excel file<input type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onchange="App.importFile('${kind}', this)"></label>
+      ${inModal ? '' : `<a href="#" data-act="goto" data-id="${sp.view}" class="small">Open the list</a>`}</div>`
+    : `<p class="small">${flag(sp.why())}</p>`}`;
+}
+view('import', 'Import master data from Excel', 'Items', 'Masters', 'Import', () => `
+  <section class="card"><h3>How it works</h3><ol class="flow">
+  <li><b>Download the Excel template</b> of the list. It already holds the rows in the app, so you can correct them and add new rows below. A second sheet explains every column.</li>
+  <li><b>Fill it in Excel</b> - one row per record, keep the header row. Your own master sheet also works if its column headings match the template (extra columns are ignored).</li>
+  <li><b>Import the file</b> (.xlsx or .csv). The app first shows every row as New, Update, No change or Error, and saves only when you confirm. Rows with errors are skipped - correct them in Excel and import again.</li>
+  <li>Rows already in the app are matched and updated; <b>blank cells keep the value already in the app</b>. Nothing is deleted (except rooms, when you tick "replace the room list").</li>
+  <li>Order: Items and Vendors first, then MPL rates (they refer to items and vendors), then PPM equipment.</li></ol></section>
+  <div class="two">${Object.keys(IMPORTS).map(k => `<section class="card">${impCard(k)}</section>`).join('')}</div>`);
+ACT.impOpen = kind => modal('Import ' + IMPORTS[kind].label.toLowerCase() + ' from Excel', impCard(kind, true)
+  + '<p class="small muted">Blank cells keep the value already in the app; rows with errors are skipped. You see every row before anything is saved. More lists: Masters &gt; Import from Excel.</p>', [], { noFocus: true });
+const impBtn = kind => IMPORTS[kind].can() ? `<button class="btn ghost" data-act="impOpen" data-id="${kind}">Import from Excel</button>` : '';
+
+ACT.impTpl = kind => {
+  const sp = IMPORTS[kind];
+  const val = (c, v) => v === null || v === undefined ? '' : c.t === 'num' ? (v === '' ? '' : num(v)) : c.t === 'date' && v ? fdate(v) : v;
+  const data = [sp.cols.map(c => c.h)].concat(sp.list().map(o => sp.cols.map(c => val(c, o[c.k]))));
+  const what = c => c.note || (c.t === 'num' ? 'Number' : c.t === 'date' ? 'Date' : c.t === 'yn' ? 'Y or N' : c.t === 'pick' ? '' : 'Text');
+  const allowed = c => { if (c.t !== 'pick') return c.t === 'date' ? 'dd-mm-yyyy, dd-Mon-yyyy or an Excel date' : ''; const o = c.o().map(x => Array.isArray(x) ? x[0] : x); return o.length <= 40 ? o.join(' | ') : 'See the list in the app'; };
+  const info = [['Column', 'Needed for a new row', 'What to enter', 'Allowed values / format']].concat(sp.cols.map(c => [c.h, c.req ? 'Yes' : '', what(c), allowed(c)]))
+    .concat([[], ['How the import works'], ['Rows are matched on: ' + sp.match + '. A match updates that row; anything else is added as a new row.'],
+      ['Blank cells keep the value already in the app. Nothing is deleted by an import.'], ['Keep the header row of the first sheet as it is. Extra columns are ignored.'],
+      ['Import the file from Masters > Import from Excel (or the Import from Excel button on the list). The app shows every row before it saves.']]);
+  const bytes = xlsxBuild([
+    { name: sp.sheet, rows: data, widths: sp.cols.map(c => Math.min(45, Math.max(12, c.h.length + 4))) },
+    { name: 'Instructions', rows: info, widths: [34, 20, 60, 60] },
+  ]);
+  download(`KUN_MH_${sp.sheet.replace(/\W+/g, '_')}_template_${isoDate(new Date())}.xlsx`, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+};
+
+App.importFile = async (kind, inp) => {
+  const f = inp.files && inp.files[0]; if (!f) return;
+  try {
+    const buf = new Uint8Array(await f.arrayBuffer()); inp.value = '';
+    let wb;
+    if (buf[0] === 0xD0 && buf[1] === 0xCF) throw new Error('this is the old .xls format. In Excel use File > Save As > Excel Workbook (.xlsx), then import that file');
+    if (buf[0] === 0x50 && buf[1] === 0x4B) wb = await readXlsx(buf);
+    else wb = { sheets: [{ name: f.name, rows: parseCSV(new TextDecoder().decode(buf)) }] };
+    const sp = IMPORTS[kind];
+    let idx = wb.sheets.findIndex(s => impNorm(s.name) === impNorm(sp.sheet));
+    if (idx < 0) idx = wb.sheets.findIndex(s => !/instruction/i.test(s.name) && s.rows.length);
+    IMP = { kind, wb, idx: Math.max(0, idx), name: f.name, replace: false };
+    impShow();
+  } catch (e) { console.error(e); toast('Could not read ' + f.name + ': ' + e.message, 'bad'); }
+};
+App.impSheet = i => { IMP.idx = +i; impShow(); };
+App.impReplace = v => { IMP.replace = v; };
+function impShow() {
+  const { kind, wb, idx, name } = IMP, sp = IMPORTS[kind];
+  const prep = IMP.prep = impPrepare(kind, wb.sheets[idx].rows);
+  const sheetSel = wb.sheets.length > 1 ? `<label class="mp">Sheet <select onchange="App.impSheet(this.value)">${opts(wb.sheets.map((s, i) => [i, s.name]), idx, false)}</select></label>` : '';
+  if (prep.err) return modal('Import ' + sp.label.toLowerCase(), `<div class="sum"><b>${esc(name)}</b> ${sheetSel}</div><p class="note warn">${esc(prep.err)}</p><p class="small muted">Download the Excel template to see the expected column names.</p>`, [{ l: 'Download Excel template', fn: () => ACT.impTpl(kind) }], { wide: true, noFocus: true });
+  const c = a => prep.rows.filter(r => r.action === a).length;
+  const nN = c('New'), nU = c('Update'), nS = c('No change'), nE = c('Error'), go = nN + nU;
+  const AF = { New: 'ok', Update: '', 'No change': 'ok', Error: 'bad' };
+  const keepRooms = kind === 'rooms' ? S.rooms.filter(r => !prep.rows.some(x => x.action !== 'Error' && lc(x.key) === lc(r.no))) : [];
+  const cols = [
+    { h: 'Row', n: 1, v: r => r.n }, { h: 'Key', v: r => `<b>${esc(r.key)}</b>` },
+    { h: 'Result', v: r => `<span class="flag ${AF[r.action]}">${esc(r.action)}</span>`, x: r => r.action },
+    { h: 'Details', w: 260, v: r => r.E.map(e => `<span class="flag bad">${esc(e)}</span>`).concat(r.W.map(w => `<span class="flag">${esc(w)}</span>`)).join(' ')
+        + (r.action === 'Update' ? '<div class="small">' + r.changes.map(k => `${esc(impColByK(kind, k).h)}: ${impShowVal(r.ex[k])} &rarr; ${impShowVal(r.raw[k])}`).join('<br>') + '</div>' : ''),
+      x: r => r.E.concat(r.W).concat(r.action === 'Update' ? r.changes.map(k => impColByK(kind, k).h + ': ' + (r.ex[k] ?? '') + ' -> ' + (r.raw[k] ?? '')) : []).join('; ') },
+  ].concat(sp.show.map(k => ({ h: impColByK(kind, k).h, v: r => impShowVal(r.raw[k] !== undefined ? r.raw[k] : r.ex ? r.ex[k] : ''), x: r => r.raw[k] ?? (r.ex ? r.ex[k] : '') ?? '' })));
+  const body = `<div class="sum"><b>${esc(name)}</b> ${sheetSel} <span class="muted">${prep.rows.length} data row(s), header on row ${prep.hr + 1}</span>
+      <span class="flag ok">New ${nN}</span> <span class="flag">Update ${nU}</span> <span class="flag ok">No change ${nS}</span> <span class="flag ${nE ? 'bad' : 'ok'}">Errors ${nE}</span></div>
+    ${prep.ignored.length ? `<p class="note warn">Columns not recognised - ignored: ${esc(prep.ignored.join(', '))}</p>` : ''}
+    ${nE ? `<p class="note warn">${nE} row(s) with errors will be skipped. Correct them in Excel and import the file again - rows already imported then show "No change".</p>` : ''}
+    ${kind === 'rooms' && keepRooms.length ? `<label class="chk"><input type="checkbox" onchange="App.impReplace(this.checked)"> Replace the room list: remove the ${keepRooms.length} room(s) in the app that are not in this file (rooms with an open request are kept)</label>` : ''}
+    ${table('imp', cols, prep.rows, { name: 'Import check ' + sp.label, noTools: prep.rows.length < 12, rowCls: r => '' })}`;
+  modal('Import ' + sp.label.toLowerCase() + ' - check', body, [
+    go && { l: `Import ${go} row(s)`, cls: 'pri', fn: () => impApply() },
+    { l: 'Download Excel template', fn: () => ACT.impTpl(kind) },
+  ], { wide: true, noFocus: true });
+}
+function impApply() {
+  const { kind, prep, name } = IMP, sp = IMPORTS[kind];
+  if (!sp.can()) return toast(sp.why(), 'bad');
+  let nN = 0, nU = 0, nR = 0;
+  prep.rows.forEach(r => {
+    if (r.action === 'New') { const o = Object.assign(sp.blank(), r.raw); if (sp.fix) sp.fix(o); sp.list().push(o); nN++; }
+    else if (r.action === 'Update') { Object.assign(r.ex, r.raw); if (sp.fix) sp.fix(r.ex); nU++; }
+  });
+  if (kind === 'rooms' && IMP.replace) {
+    const inFile = new Set(prep.rows.filter(r => r.action !== 'Error').map(r => lc(r.key)));
+    const busy = no => S.jobs.some(j => j.room === no && !j.completed);
+    const keep = S.rooms.filter(r => inFile.has(lc(r.no)) || busy(r.no));
+    nR = S.rooms.length - keep.length; S.rooms = keep;
+  }
+  if (sp.after) sp.after();
+  if (kind === 'users' && SHARED) S.users.forEach(u => { if (u.cid === undefined) u.cid = ''; });
+  IMP = null; closeModal();
+  commit('Imported from Excel', `${sp.label}: ${nN} new, ${nU} updated${nR ? ', ' + nR + ' removed' : ''} (${name})`);
+  render(); toast(`${sp.label}: ${nN} added, ${nU} updated${nR ? ', ' + nR + ' removed' : ''}.`, 'ok');
+}
 </script>
 <script>const PRINT_CSS = document.getElementById('printcss').textContent.replace(/@media print\{[\s\S]*?\}\s*\}/, '');</script>
 </body>
