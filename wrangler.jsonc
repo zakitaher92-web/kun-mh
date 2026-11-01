@@ -1,9 +1,0 @@
-// Cloudflare Worker that serves the app as static files.
-// Connected to GitHub (Worker > Settings > Builds), every push to main is deployed.
-{
-  "name": "kun-mh",
-  "compatibility_date": "2026-10-01",
-  "assets": {
-    "directory": "./"
-  }
-}

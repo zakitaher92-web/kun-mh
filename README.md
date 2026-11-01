@@ -1,51 +1,82 @@
 # KUN Karbala - Maintenance & Housekeeping app
 
 Service desk, procure-to-pay, stores and housekeeping control for the zaereen hotel (formats MH-01 to MH-24).
-The app is hosted on GitHub Pages; all records are kept in the organisation's Firebase project and shared live with every user.
+
+The app is one web page (`index.html`) served by a small local server. All records are kept in a PostgreSQL 16 database on that computer and shared live with every user. Nothing is kept only in the browser.
 
 ## Files
 
-| File | What it is |
+| File / folder | What it is | Published on a website? |
+|---|---|---|
+| `index.html` | The whole app (screens, calculations, Excel import/export). Served by the local server | No |
+| `INSTALLATION_GUIDE.md` | **Start here.** Step-by-step installation for a Windows PC | No |
+| `setup\` | The seven set-up scripts (`1-check-requirements.bat` to `7-backup.bat`) and their helpers | No |
+| `server\` | The local server: Node.js code, database schema, account tool, browser adapter | No |
+| `server\README.md` | Technical reference for the server and the commands behind the scripts | No |
+| `server\.env` | **Your** database password and settings. Created by step 4, never committed | No |
+| `.gitignore`, `.assetsignore` | Files kept out of git and off any public website | - |
+
+## Quick start (Windows)
+
+1. Install **Node.js 22 or 24 (LTS)** and **PostgreSQL 16**, as described in [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md), Part 1.
+2. Open the `setup` folder and double-click, in order:
+   1. `1-check-requirements.bat`: checks the computer.
+   2. `2-install-packages.bat`: downloads the server packages (once).
+   3. `3-create-database.bat`: creates the database `kun_mh` and the user `kunmh`.
+   4. `4-configure.bat`: writes `server\.env` and tests the connection.
+   5. `5-create-admin.bat`: creates a log-in for each person.
+   6. `6-start-app.bat`: starts the server and opens http://localhost:3000.
+   7. `7-backup.bat`: saves a database backup to `C:\KUN\backups` (run weekly).
+3. Log in with the first account and choose **Start with the example data** (training) or **Start empty** (real use).
+
+Each script explains what it did and what to do next. Step 1 is safe to repeat at any time.
+
+## Everyday use
+
+| Task | How |
 |---|---|
-| `index.html` | The whole app |
-| `config.js` | Connection to the Firebase project (paste your values here) |
-| `firestore.rules` | Database rules to paste into the Firebase console |
-| `wrangler.jsonc` | Cloudflare Worker settings (the site at kun-mh....workers.dev) |
-| `.assetsignore` | Files kept off the website (README, rules, settings) |
+| Start the app | Start PostgreSQL (service `postgresql-x64-16`), then double-click `setup\6-start-app.bat` |
+| Stop the app | Close the server window (or press Ctrl+C in it) |
+| Stop PostgreSQL | Stop the app first, then stop the service `postgresql-x64-16` in services.msc |
+| Add a person | Double-click `setup\5-create-admin.bat` |
+| Change a password | `npm run user -- password EMAIL "NEW-PASSWORD"` in the `server` folder |
+| Block a leaver | `npm run user -- disable EMAIL` (re-enable with `enable`) |
+| List accounts | `npm run user -- list` |
+| Back up | Double-click `setup\7-backup.bat`, or in the app **Admin > Data > Download backup** |
+| Restore | In the app **Admin > Data > Restore from backup** |
+| Reset everything for a test | Stop the app, then drop and recreate the database (see `server\README.md`) |
 
-## Set-up (about 20 minutes, once)
+## Where the data lives
 
-### A. Firebase - the cloud database and log-ins
-1. Go to https://console.firebase.google.com, sign in with a Google account and click **Create a project** (name e.g. `kun-mh`; Google Analytics can be switched off).
-2. **Build > Firestore Database > Create database**: choose **production mode** and the location nearest Karbala (a Middle East or Europe region). The location cannot be changed later.
-3. In Firestore open the **Rules** tab, replace the text with the contents of `firestore.rules`, click **Publish**.
-4. **Build > Authentication > Get started > Email/Password > Enable > Save.**
-5. **Authentication > Settings > User actions**: untick **Enable create (sign-up)** so nobody can register themselves. Save.
-6. **Authentication > Settings > Authorized domains > Add domain**: `YOUR-GITHUB-USERNAME.github.io`.
-7. **Authentication > Users > Add user**: one account (email + password) for yourself and for each staff member.
-8. **Project settings** (gear icon) **> General > Your apps > Web (`</>`)**: register an app (e.g. `KUN MH`, no hosting). Copy the values shown in `firebaseConfig`.
+- All records are rows in the PostgreSQL table `kv_docs` (one row per document, stored as JSON). Settings, registers, users and the audit trail are all there.
+- Log-ins are in `accounts`; sessions are in `sessions` (they expire after 12 hours).
+- The browser keeps nothing: it reads the data from the server when the app opens and receives live updates when another user changes something.
+- To look at the data directly, use pgAdmin (installed with PostgreSQL) or `psql`. Details are in `server\README.md`.
 
-### B. GitHub - the web address
-1. On https://github.com click **New repository**: name `kun-mh`, **Public**, **Create repository**.
-2. Click **uploading an existing file**, drag in `index.html` and `config.js`, click **Commit changes**.
-3. Open `config.js` in the repository, click the pencil (Edit), replace the `PASTE_...` values with the values from step A8, **Commit changes**.
-4. **Settings > Pages**: Source **Deploy from a branch**, Branch **main**, folder **/ (root)**, **Save**.
-5. After a minute or two the app is live at `https://YOUR-GITHUB-USERNAME.github.io/kun-mh/` - this is the URL for all users.
+## Troubleshooting
 
-### C. First use
-1. Open the URL and log in with your own account. Choose **Start with the October 2026 example data** (pilot) or **Start empty** (go-live). Whoever does this first becomes the app owner.
-2. Choose **HOA** (or add yourself as an Admin user). In **Admin > Users** enter the real names of the users.
-3. Give each staff member the URL with their email and password. At their first log-in they pick their user and click **Ask to be linked**; the Head of Accounts approves it in **Admin > Users**.
-4. In **Settings (MH-01)** set the approval password, check the limits and lock them.
+The scripts print a clear message for most problems. The most common ones:
 
-## Day to day
-- A leaver: set the user to Active = N in **Admin > Users** and disable the account in Firebase Authentication.
-- Forgotten password: the user clicks **Forgot password?** on the log-in page, or the Admin resets it in Firebase Authentication.
-- Backup: **Admin > Data > Download backup** at least weekly.
-- New version of the app: upload the new `index.html` to the repository (replace the file). `config.js` stays as it is.
-- Costs: the Firebase free plan (Spark) is enough for a team of this size.
+| Message | What to do |
+|---|---|
+| `Node.js is not installed` (step 1) | Install Node.js, open a new window, run step 1 again |
+| `PostgreSQL is not running on port 5432` (step 1) | Start the service `postgresql-x64-16` in services.msc |
+| `Could not connect to the database` (step 4) | Check the `kunmh` password from step 3 and that PostgreSQL is running |
+| `Port 3000 is already in use` (step 6) | The app is probably already running. Open http://localhost:3000 |
+| `pg_dump.exe was not found` (step 7) | Install PostgreSQL with the Command Line Tools, or back up from the app |
+| `password authentication failed for user "kunmh"` | The `DB_PASSWORD` in `server\.env` does not match the password of user `kunmh`. Run step 4 again with the right password |
+| `database "kun_mh" does not exist` | Run step 3 |
+| Browser shows *Loading the shared data* | Reload the page and check the server window for an error |
 
-## Cloudflare (workers.dev) site
-The Worker `kun-mh` serves `index.html` and `config.js` as static files (`wrangler.jsonc`).
-One-time link: Cloudflare dashboard > Workers & Pages > **kun-mh** > **Settings > Builds** > **Connect** > GitHub > repository `kun-mh`, branch `main`.
-Leave the build command empty and the deploy command `npx wrangler deploy`. After that every push to `main` is live within a minute or two.
+More detail is in `INSTALLATION_GUIDE.md`, Part 4.
+
+## Security notes
+
+- The server listens on `127.0.0.1` (this computer only) by default. Changing `HOST` to allow other computers needs IT approval and HTTPS in front of the app.
+- Any log-in the server accepts can read and change all data. Access is limited only by the app's own user roles and log-ins. Keep the log-in list short and disable leavers promptly.
+- `server\.env` holds the database password. It is excluded from git and from any public website.
+
+## Changing the app
+
+- Edit `index.html` (the app) or the files in `server\` (the local server). Restart the server after changing server code.
+- Before committing, run `setup\1-check-requirements.bat` and `setup\6-start-app.bat`, and check that the app loads in the browser.
