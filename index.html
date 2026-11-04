@@ -1204,7 +1204,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal'
 function renderNoServer() {
   document.getElementById('app').innerHTML = `<div class="login"><div class="lcard"><div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>Maintenance &amp; Housekeeping</h1>
     <p>The app must be opened through the local server, so that its records are saved in the database.</p>
-    <p class="muted">Start the server with <b>setup\\6-start-app.bat</b>, then open <b>http://localhost:3000</b>.</p></div></div>`;
+    <p class="muted">Start the server with <b>setup\\6-start-app.bat</b>, then open the app at the address your administrator gave you (for example <b>http://SERVER-NAME:8080</b>).</p></div></div>`;
 }
 function startApp() {
   if (HOST !== 'server') return renderNoServer();

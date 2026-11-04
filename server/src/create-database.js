@@ -4,7 +4,7 @@
 // Safe to run again: an existing user gets the new password, an existing database is left as it is.
 const { Client } = require('pg');
 
-const PORT = Number(process.env.PG_PORT || 5432);
+const PORT = Number(process.env.PG_PORT || 5433);
 const SUPER_PW = process.env.PG_SUPERUSER_PASSWORD;
 const APP_PW = process.env.KUNMH_PASSWORD;
 const DB = process.env.DB_NAME || 'kun_mh';

@@ -1,6 +1,6 @@
-# Step 7: saves a copy of the database to C:\KUN\backups (run it weekly).
+# Step 8: saves a copy of the database to C:\KUN\backups (run it weekly).
 . "$PSScriptRoot\common.ps1"
-Write-Step 'Step 7 of 7: backing up the database'
+Write-Step 'Step 8 of 8: backing up the database'
 try {
     if (-not (Test-Path $EnvFile)) { throw 'Run step 4 first (the settings file is missing).' }
     $pgdump = Get-PgDump

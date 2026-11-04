@@ -1,6 +1,6 @@
 # Step 5: creates the log-in accounts for the people who will use the app.
 . "$PSScriptRoot\common.ps1"
-Write-Step 'Step 5 of 7: creating log-in accounts'
+Write-Step 'Step 5 of 8: creating log-in accounts'
 try {
     if (-not (Test-Path $EnvFile)) { throw 'Run step 4 first (the settings file is missing).' }
     $more = 'y'

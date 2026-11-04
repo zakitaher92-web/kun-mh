@@ -6,3 +6,6 @@ server/.env
 
 # Backup of the settings file written by setup step 4
 server/.env.bak
+
+# Log of the running server (written by setup step 6)
+logs/

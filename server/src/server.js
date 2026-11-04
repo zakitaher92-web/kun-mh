@@ -11,7 +11,7 @@ const { createPool, applySchema } = require('./db');
 
 const APP_DIR = path.join(__dirname, '..', '..');          // the kun-mh folder (index.html)
 const CLIENT_DIR = path.join(__dirname, '..', 'client');   // server-adapter.js
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 3100);   // 3000 is used by another app on the server
 const HOST = process.env.HOST || '127.0.0.1';              // only this computer by default
 const COOKIE = 'kunmh_sid';
 const SESSION_HOURS = 12;
