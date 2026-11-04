@@ -41,8 +41,10 @@ try {
     $allowed = if ($env:KUN_ALLOWED_ADDRESSES) { $env:KUN_ALLOWED_ADDRESSES } else {
         Read-Host 'Which computers may open the app? Press Enter for this network only (LocalSubnet), or type a range such as 10.10.0.0/16, or Any'
     }
-    $allowed = $allowed.Trim()
-    if (-not $allowed) { $allowed = 'LocalSubnet' }
+    # One or more entries separated by commas, for example: LocalSubnet,10.0.3.239
+    $allowed = @($allowed -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if (-not $allowed) { $allowed = @('LocalSubnet') }
+    $allowedText = $allowed -join ', '
 
     $thumb = if ($env:KUN_CERT_THUMBPRINT) { $env:KUN_CERT_THUMBPRINT } else {
         Read-Host 'Certificate thumbprint for HTTPS (Enter to skip; see INSTALLATION_GUIDE.md, Part 5)'
@@ -204,7 +206,7 @@ __HTTPS_RULE__        <rule name="KUN-MH app" stopProcessing="true">
         Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
         New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP `
             -LocalPort $p -RemoteAddress $allowed -Profile Any | Out-Null
-        Write-Ok "Firewall: port $p is open for $allowed"
+        Write-Ok "Firewall: port $p is open for $allowedText"
     }
 
     # 10. Test the whole path: IIS -> app. The app answers 401 ("log in first") to an anonymous request.
