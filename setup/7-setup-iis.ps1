@@ -113,6 +113,10 @@ try {
     }
 
     # 6. web.config: the rule that passes every request to the app
+    # IIS cannot read files inside a user profile (C:\Users\...), so the app must be in a permanent folder such as C:\KUN\kun-mh.
+    if ($Root -match ('^' + [regex]::Escape($env:SystemDrive) + '\\Users\\')) {
+        throw "The app is in a user profile folder ($Root). IIS cannot read it there. Copy the kun-mh folder to C:\KUN\kun-mh, then run 6-start-app.bat and 7-setup-iis.bat from that folder (INSTALLATION_GUIDE.md, Part 1)."
+    }
     $siteDir = Join-Path $Root 'iis'
     New-Item -ItemType Directory -Force -Path $siteDir | Out-Null
 
@@ -152,6 +156,9 @@ __HTTPS_RULE__        <rule name="KUN-MH app" stopProcessing="true">
     # 7. The application pool: no .NET, used only by this website (the Billing site keeps its own pool)
     if (-not (Test-Path "IIS:\AppPools\$IisAppPool")) { New-WebAppPool -Name $IisAppPool | Out-Null }
     Set-ItemProperty "IIS:\AppPools\$IisAppPool" -Name managedRuntimeVersion -Value ''
+    # The application pool must be able to read the site folder (web.config). Failure stops the step.
+    cmd.exe /c "icacls ""$siteDir"" /grant ""IIS AppPool\$IisAppPool"":(OI)(CI)RX" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not give the application pool $IisAppPool read access to $siteDir." }
 
     # 8. The IIS website, on the chosen ports only
     if (-not (Get-Website -Name $SiteName -ErrorAction SilentlyContinue)) {
@@ -207,6 +214,8 @@ __HTTPS_RULE__        <rule name="KUN-MH app" stopProcessing="true">
         Write-Ok 'IIS reaches the app. The log-in check answered as expected.'
     } elseif ($status -eq 0 -or $status -ge 500) {
         Write-Fail "IIS answered with status $status, so it cannot reach the app. Run 6-start-app.bat, then run this step again if needed. Check $LogFile."
+    } elseif ($status -ge 300 -and $status -lt 400) {
+        Write-Warn "IIS redirects http://127.0.0.1:$httpPort (status $status) to HTTPS. Office users will be sent to https://$($env:COMPUTERNAME):$httpsPort, which only works when the certificate matches that name. See INSTALLATION_GUIDE.md, Part 5."
     } else {
         Write-Warn "IIS answered with status $status (expected 401). Check the site in IIS Manager."
     }

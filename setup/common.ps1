@@ -79,12 +79,18 @@ function Get-NodeExe {
 
 # Returns the PostgreSQL "bin" folder that holds postgres.exe, or $null.
 function Get-PgBin {
+    # 1. An explicit folder given by the installer (KUN_PG_BIN), 2. the standard installs, newest version first
+    $installed = Get-ChildItem 'C:\Program Files\PostgreSQL' -Directory -ErrorAction SilentlyContinue |
+        Sort-Object { [int]($_.Name -replace '\D', '0') } -Descending |
+        ForEach-Object { Join-Path $_.FullName 'bin' }
     $candidates = @(
-        'C:\Program Files\PostgreSQL\16\bin',
+        $env:KUN_PG_BIN,
+        'C:\Program Files\PostgreSQL\16\bin'
+    ) + @($installed) + @(
         'C:\pgsql\node_modules\@embedded-postgres\windows-x64\native\bin',
         (Join-Path $env:USERPROFILE 'pgsql-local\node_modules\@embedded-postgres\windows-x64\native\bin')
     )
-    foreach ($c in $candidates) {
+    foreach ($c in @($candidates | Where-Object { $_ })) {
         if (Test-Path (Join-Path $c 'postgres.exe')) { return $c }
     }
     return $null
@@ -131,10 +137,17 @@ function Get-DbPort {
 }
 
 # Returns the HTTP status code for a URL, or 0 if there was no answer at all.
+# Redirects are NOT followed: a 301 means the site redirects (for example HTTP to HTTPS), and the caller decides what that means.
 function Get-HttpStatus([string]$Url) {
+    $request = [Net.HttpWebRequest]::Create($Url)
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 15000
     try {
-        return [int](Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 15).StatusCode
-    } catch {
+        $response = $request.GetResponse()
+        $code = [int]$response.StatusCode
+        $response.Close()
+        return $code
+    } catch [Net.WebException] {
         if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
         return 0
     }
