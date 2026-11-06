@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
-    "user": "node --env-file-if-exists=.env src/manage.js"
+    "user": "node --env-file-if-exists=.env src/manage.js",
+    "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
+    "masters:import": "node --env-file-if-exists=.env src/import-masters.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

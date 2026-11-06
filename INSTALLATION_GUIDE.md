@@ -90,7 +90,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 - **Step 3** asks you to choose a password for the `postgres` user of the **KUN MH** database. This is not the Billing app's password. Then it asks for a password for the app database user `kunmh`. Write both down.
 - **Step 5** asks for an email, a name and a password (at least 8 characters) for each person. Give each person their password **in person**.
 - **Step 7** asks these questions:
-  1. **Which computers may open the app.** Press Enter for *LocalSubnet* (computers on the same network as the server). Type a range such as `10.10.0.0/16` if the office uses several networks. Ask IT if you are not sure.
+  1. **Which computers may open the app.** Press Enter for *LocalSubnet* (computers on the same network as the server). Type one or more ranges separated by commas, such as `10.10.0.0/16,10.20.0.0/16`, if the office uses several networks. Ask IT if you are not sure.
   2. **Certificate thumbprint.** Paste it (Part 5), or press Enter to skip HTTPS for now.
   3. **Port for HTTP**, and with a certificate **port for HTTPS**. Press Enter for **8080** and **8443**. Do not choose 80, 443, 3000 or 5432.
   4. **Stop a website on that port?** Only if the step finds another IIS website using it. A website is stopped, not deleted.
@@ -183,7 +183,109 @@ If you use a self-signed certificate, each browser shows a warning until the cer
 | `pg_dump.exe was not found` (step 8) | Install PostgreSQL 16 with the Command Line Tools, or back up from the app: **Admin > Data > Download backup** |
 | *Wrong email or password* in the app | Check the spelling. An administrator can reset the password with the command in Part 3 |
 
+| `psql.exe was not found` (Part 7, step 4) | Install PostgreSQL 16 with the Command Line Tools (Part 1b), then run Part 7, step 4 again |
+| `The app is in a user profile folder` (step 7) | IIS cannot read the app there. Move the folder to `C:\KUN\kun-mh` (Part 7, step 1c), then run `6-start-app.bat` and `7-setup-iis.bat` from the new folder |
+| Settings show blank job targets, or the job-card priority list still shows *Urgent* | The data upgrade has not run. Run Part 7, step 4 |
+| `Could not connect to the database` during the data upgrade | Check that the service `postgresql-kun-16` is running and that the `kunmh` password is right |
+
 When you report a problem, send the text from the script window, the output of `check-access.bat`, and the last lines of `logs\server.log`.
+
+---
+
+## Part 7 - Upgrade an existing installation (version 1.9)
+
+Use this part when KUN MH is already running on a server (for example the hosted copy, last installed from the package of 4 November 2026) and you are bringing it up to version 1.9. The database, the log-ins and the transactions (POs, GRNs, bills, job cards, payments, audit log) stay as they are. Master data is replaced with the 1.9 masters.
+
+**What changes**
+
+| Part | Change in version 1.9 | How it is applied |
+|---|---|---|
+| Screens (`index.html`) | New screens **Consolidated cash PV** (MH-16B) and **Notifications and pending actions**. Job-card priorities are now *High* and *Normal* only, with targets in days. Bills whose net value is above the received value or the PO value by more than the bill tolerance need variance approval. The default payment mode for new POs is *Cash* | Copy the new files (step 3) |
+| Database layout (`server\schema.sql`) | **No change.** No new tables | Nothing to do |
+| Server code (`server\src`, `server\client`) | Two new commands for master data (`masters:export`, `masters:import`). The server itself is unchanged | Copy the new files (step 3) |
+| Settings and priority list | New settings keys, job-card targets in days, *Urgent* removed | `server\upgrade-1.9.sql` (step 4) |
+| Job cards with priority *Urgent* | Become **High** (the closest level that remains). Any that should be *Normal* are changed in the app afterwards | `server\upgrade-1.9.sql` (step 4) |
+| Master data: items, vendors, users, price list (MPL), budget lines, categories, lists, access rights, settings | Replaced with the 1.9 masters, from the file `KUN-MH-masters-1.9.json` | Import (step 5) |
+| Setup scripts (`setup\`) | Step 7 accepts several allowed networks separated by commas, and refuses an app folder inside a user profile. Step 2 is more tolerant of npm messages. Only needed if you run the scripts again | Copy the new files (step 3) |
+
+**What the master-data import keeps from the hosted database**
+
+- the settings: the approval passphrase, the lock state (*locked* / *unlocked*) and the occupancy plan;
+- the password fields of users;
+- every transaction, the room status, the number log and the audit log.
+
+Rooms (`m_rooms`) are not part of the master import. Their status keeps changing day by day, so the hosted rooms are kept.
+
+**Before you start**
+
+- Note the folder the app runs from. It must be a permanent folder such as `C:\KUN\kun-mh`, not a folder under `C:\Users\`. If it is under `C:\Users\`, do step 1c first.
+- Make sure `psql.exe` is installed (Part 1b). You need the password of the database user `kunmh` (Part 2, step 3).
+- Get the file `KUN-MH-masters-1.9.json` from the office. It contains staff names and contact details: keep it on the server only, and do not e-mail it.
+- Plan about 30 minutes. Users see an error page while the app is stopped, so do the upgrade outside working hours.
+
+**Steps**
+
+1. **Back up.**
+   a. Run `setup\8-backup.bat` and check that the new file in `C:\KUN\backups` is not empty.
+   b. Copy the whole `kun-mh` folder to `C:\KUN\kun-mh-before-1.9`. This is the rollback copy.
+   c. If the app is under `C:\Users\`, copy the folder to `C:\KUN\kun-mh` and run the remaining steps from there. Then run `6-start-app.bat` and `7-setup-iis.bat` once from the new folder, so that the scheduled task and IIS point to it.
+2. **Stop the app.** Double-click `setup\stop-app.bat`.
+3. **Copy the new files.** Open a Command Prompt as administrator. Replace `NEW-PACKAGE` with the folder of the new version, and `C:\KUN\kun-mh` with the installed folder:
+   ```bat
+   robocopy "NEW-PACKAGE\kun-mh" "C:\KUN\kun-mh" /E /XF .env /XD node_modules logs iis
+   ```
+   This copies `index.html`, the documents, the setup scripts, the server files, `server\upgrade-1.9.sql` and the master-data commands. It keeps `server\.env` (the database settings), `logs`, `iis` and `node_modules`. robocopy exit codes 0 to 7 mean success; 8 or more means an error.
+4. **Upgrade the settings and priorities.** In a Command Prompt, in the `server` folder of the installed app:
+   ```bat
+   cd C:\KUN\kun-mh\server
+   "C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -f upgrade-1.9.sql
+   ```
+   Type the `kunmh` password when asked (nothing is shown while you type). The script prints:
+   - the settings: `job_high_days` 1 and `job_normal_days` 2 (or the values derived from the old targets), `cpv_max` 5000000, `bill_tol` 0.1;
+   - `priorities`: `["High", "Normal"]`;
+   - no rows at the end, which means no *Urgent* job card is left.
+   The script is one transaction: if it stops with an error, nothing is changed. It can also be run again without harm.
+5. **Load the master data.** Copy `KUN-MH-masters-1.9.json` to `C:\KUN\masters\`. In a Command Prompt, in the `server` folder:
+   ```bat
+   cd C:\KUN\kun-mh\server
+   npm run masters:import -- C:\KUN\masters\KUN-MH-masters-1.9.json --dry-run
+   ```
+   The dry run lists each master document as *new*, *changed* or *unchanged*, and saves nothing. Check the list with the Head of Accounts. Then load it for real:
+   ```bat
+   npm run masters:import -- C:\KUN\masters\KUN-MH-masters-1.9.json
+   ```
+   The load is one transaction: if it stops with an error, nothing is saved. The last line says *Master data saved*.
+6. **Start the app.** Double-click `setup\6-start-app.bat`, then check that `logs\server.log` ends with `KUN MH server running`.
+7. **Check the screens.** From another computer, open the app, log in and check:
+   - the menu has **Consolidated cash PV** (under *Bills & payment*) and **Notifications** (under *Admin*);
+   - **Settings**, section C, shows *Target - High priority (days)* and *Target - Normal priority (days)*;
+   - the job-card priority list shows *High* and *Normal* only;
+   - the item, vendor and price-list screens show the 1.9 masters;
+   - the existing POs, GRNs, bills and job cards still show their old numbers and dates.
+8. **Check the log-ins.** The people on the **Users** screen are the 1.9 masters, but log-ins are kept separately. For each person who needs to sign in to this server, check that an account exists: `npm run user -- list` (in the `server` folder). Add missing ones with `setup\5-create-admin.bat`.
+9. **Review the Urgent job cards.** Former *Urgent* job cards are now *High*. Open any that should be *Normal* and change the priority in the app.
+10. **Review the settings** with the Head of Accounts (Settings, sections B and C). The 1.9 values for the approval thresholds, the tolerances and the consolidated cash PV limit come from the 1.9 masters.
+
+**Rollback** (if the new version does not work)
+
+1. Stop the app (`setup\stop-app.bat`).
+2. Copy the files back from `C:\KUN\kun-mh-before-1.9` into the installed folder, using the same `robocopy` command with the two folders swapped and without `/XF .env`.
+3. If the data must be undone too, restore the backup from step 1a: in the app, **Admin > Data > Restore from backup** (see Part 3).
+4. Start the app (`setup\6-start-app.bat`).
+
+**Upgrade checklist**
+
+- [ ] Backup made in `C:\KUN\backups`, and the rollback folder copied
+- [ ] App folder is not under `C:\Users\`
+- [ ] App stopped, new files copied with `robocopy`, `server\.env` kept
+- [ ] `upgrade-1.9.sql` ran without errors and printed the expected values
+- [ ] Master-data dry run reviewed, then the import saved
+- [ ] App started, and `logs\server.log` shows the server running
+- [ ] Menu shows *Consolidated cash PV* and *Notifications*
+- [ ] Masters checked on the screens; existing transactions unchanged
+- [ ] Log-ins checked for each person (step 8)
+- [ ] Former *Urgent* job cards reviewed (step 9)
+- [ ] Settings reviewed with the Head of Accounts (step 10)
 
 ---
 
@@ -220,3 +322,4 @@ When you report a problem, send the text from the script window, the output of `
 - [ ] First set-up completed (example or empty data)
 - [ ] Step 8 made the first backup
 - [ ] The server was restarted once, and the app and database came back by themselves
+- [ ] Existing installation only: the upgrade checklist in Part 7 is complete
