@@ -11,7 +11,8 @@
     "start": "node --env-file-if-exists=.env src/server.js",
     "user": "node --env-file-if-exists=.env src/manage.js",
     "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
-    "masters:import": "node --env-file-if-exists=.env src/import-masters.js"
+    "masters:import": "node --env-file-if-exists=.env src/import-masters.js",
+    "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -255,6 +255,7 @@ Rooms (`m_rooms`) are not part of the master import. Their status keeps changing
    npm run masters:import -- C:\KUN\masters\KUN-MH-masters-1.9.json
    ```
    The load is one transaction: if it stops with an error, nothing is saved. The last line says *Master data saved*.
+5a. **Fix the roles.** The 1.9 master file gives the Sigat members and the Internal Auditors the role Admin. Run `setup\9-fix-roles-1.9.bat` as administrator, with the app stopped. It first shows the four changes (SIGAT1 and SIGAT2 to *Sigat*, TZAKI and TGHADIALI to *Internal Auditor*) and saves them only when you type `Y`. Each change is recorded in the audit log. Users who already have the right role are left alone.
 6. **Start the app.** Double-click `setup\6-start-app.bat`, then check that `logs\server.log` ends with `KUN MH server running`.
 7. **Check the screens.** From another computer, open the app, log in and check:
    - the menu has **Consolidated cash PV** (under *Bills & payment*) and **Notifications** (under *Admin*);
