@@ -149,6 +149,7 @@ ol.flow li,.card ul li{margin-bottom:6px}
 </head>
 <body>
 <div id="app"></div>
+<div id="staleBar" hidden style="position:fixed;top:0;left:0;right:0;z-index:300;padding:8px 12px;text-align:center;background:var(--warn);color:#000">Colleagues changed data · <button class="btn sm" data-act="refreshNow">Refresh</button></div>
 <div id="modal"></div>
 <div id="toast"></div>
 <div id="print"></div>
@@ -163,6 +164,7 @@ const ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN 
 // Module -> format and default rights per role (order as ROLES). From the Access sheet; "Rooms" and "Number Log" added.
 const MODULES = [
   ['Guide', 'Guide', 'EVVHVVV'],
+  ['My desk', 'Home', 'EEEEEEE'],
   ['Dashboard', 'MH-24', 'EVVHHHV'],
   ['Rooms', 'Desk', 'EVVEVEH'],
   ['Settings', 'MH-01', 'EVVHHHH'],
@@ -531,13 +533,36 @@ function pwdCode(pwd, salt) { let h = salt + ':' + pwd; for (let i = 0; i < 500;
 function checkApproval(pwd) { const a = S.settings.approvalHash; return a && pwdCode(pwd, a.salt) === a.code; }
 
 /* ---------- access ---------- */
+function defaultRight(module, role) {
+  const m = MODULES.find(x => x[0] === module);
+  return m ? (m[2][ROLES.indexOf(role)] || 'H') : 'H';
+}
+function accVal(module, role) {
+  const row = S.access && S.access[module];
+  return (row && row[role]) || defaultRight(module, role);
+}
 function right(module) {
   if (!U) return 'H';
-  const r = U.role === 'Admin' ? ((S.access[module] && S.access[module].Admin) || 'E') : ((S.access[module] && S.access[module][U.role]) || 'H');
+  const row = S.access && S.access[module];   // a page added after the access matrix was saved uses the built-in default
+  const r = row ? (row[U.role] || (U.role === 'Admin' ? 'E' : 'H')) : defaultRight(module, U.role);
   return (typeof READONLY !== 'undefined' && READONLY && r === 'E') ? 'V' : r;   // view-only sharing level in the shared app
 }
 const canSee = m => right(m) !== 'H';
 const canEdit = m => right(m) === 'E';
+// Record actions that can be limited per role on the Access rights page (Admin always may)
+const ACTIONS = [
+  ['po.create', 'Create purchase orders', 'PO Register'], ['adv.create', 'Request advances', 'Advances'],
+  ['grn.create', 'Receive goods (GRN)', 'GRN'], ['srn.create', 'Prepare service receipts (SRN)', 'SRN'],
+  ['bill.create', 'Enter bills', 'Bills'], ['issue.create', 'Issue slips', 'Issues'],
+  ['job.create', 'New job cards', 'Job Cards'], ['laundry.create', 'Laundry hand-overs', 'Laundry Log'],
+  ['cpv.create', 'Consolidated cash PVs', 'Consolidated PV'],
+];
+function canAct(id) {
+  const a = ACTIONS.find(x => x[0] === id); if (!a || !canEdit(a[2])) return false;
+  if (!U || U.role === 'Admin') return true;
+  const lim = S.access && S.access.__actions && S.access.__actions[id];
+  return !lim || lim.includes(U.role);
+}
 // Column rights: fields that only the named roles may change (Admin always may)
 const may = (...roles) => U && (U.role === 'Admin' || roles.includes(U.role));
 
@@ -1018,6 +1043,7 @@ function shell() {
     <div class="brand"><b>KUN Karbala</b><span>Maintenance &amp; Housekeeping</span></div>${ex}
     <div class="sp"></div>
     ${SHARED ? `<span class="sync" id="syncState" title="Changes are saved to the shared database for all users">${esc(syncLabel())}</span>` : ''}
+    <button class="btn ghost sm" data-act="myAccount">My account</button>
     <span class="who"><b>${esc(U.name)}</b><small>${esc(U.role)}</small></span>
     ${HOST === 'server' ? '' : `<button class="btn ghost sm" data-act="changePw">Password</button>
     <button class="btn ghost sm" data-act="logout">Log out</button>`}
@@ -1210,6 +1236,20 @@ function setPwModal(u, first, forced) {
     } }]);
 }
 ACT.changePw = () => setPwModal(U, false, false);
+ACT.myAccount = () => {
+  const info = kv([['User ID', esc(U.id), 'Name', esc(U.name)], ['Role', esc(U.role), 'Designation', esc(U.desig || '')], ['Contact', esc(U.contact || '-'), 'Log-in email', esc((ME && ME.email) || '-')]]);
+  if (!SHARED) return modal('My account', info, []);
+  modal('My account', info + `<h4>Change my password</h4><div class="grid"><div class="fld"><label for="mpc">Current password</label><input id="mpc" type="password" autocomplete="current-password"></div><div class="fld"><label for="mpn">New password (at least 8 characters)</label><input id="mpn" type="password" autocomplete="new-password"></div><div class="fld"><label for="mpr">Type the new password again</label><input id="mpr" type="password" autocomplete="new-password"></div></div>`,
+    [{ l: 'Sign out', fn: () => window.kunSignOut && window.kunSignOut() }, { l: 'Change password', cls: 'pri', fn: async () => {
+      const c = $('#mpc').value, a = $('#mpn').value, b = $('#mpr').value;
+      if (a.length < 8) return toast('At least 8 characters.', 'bad');
+      if (a !== b) return toast('The two entries do not match.', 'bad');
+      const r = await fetch('/api/me/password', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: c, password: a }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return toast(j.error || 'The password was not changed.', 'bad');
+      closeModal(); toast('Your password was changed.', 'ok');
+    } }]);
+};
 ACT.logout = () => {
   if (HOST === 'server') return kunSignOut(); logAudit('Log out', U.name); saveData(); U = null; VIEW = null; try { sessionStorage.removeItem('kunmh.user'); } catch (e) { } closeModal(); renderLogin(); };
 
@@ -1373,6 +1413,7 @@ const jobFields = (j, ed) => [
 ];
 
 ACT.newJob = (room) => {
+  if (!canAct('job.create')) return toast('You cannot create job cards.', 'bad');
   const j = { type: 'Repair', priority: 'High', room: room || '', location: room ? 'Room ' + room : '', trade: '', config: '', problem: '', reportedBy: 'Front office', reported: nowDT(), assigned: '', outOfOrder: false, guestImpact: false };
   modal('New request (job card MH-22)', `<p class="muted">A job card number is issued when you save. Repairs follow the target time of their priority; room configuration requests change the room's configuration when completed.</p>` + fields(jobFields(j, true), j),
     [{ l: 'Save and issue job card number', cls: 'pri', fn: async b => {
@@ -1542,6 +1583,7 @@ view('po', 'Purchase orders', 'PO Register', 'Purchasing', 'MH-06 / 07', () => {
   ], S.pos.slice().reverse(), { click: 'editPO', key: p => p.no, name: 'PO register' });
 });
 ACT.newPO = async em => {
+  if (!canAct('po.create')) return toast('You cannot create purchase orders.', 'bad');
   const no = await allocNumber('PO'); if (!no) return;
   const p = { no, date: isoDate(new Date()), vendor: '', line: '', subject: '', delivery: '', place: '', mode: 'Cash', adv: 0, del: 1, ret: 0, retDays: null, credit: 15, other: '', quotes: [], l1reason: '', budgetBy: '', approvedBy: '', approvalDate: '', cancel: false, remarks: '', emergency: em === 'em', closedOn: '', closedBy: '', shortClosed: false, shortReason: '', lines: [] };
   S.pos.push(p); commit('PO number issued', p.no + (p.emergency ? ' (emergency)' : ''));
@@ -1661,6 +1703,7 @@ view('adv', 'Advances to vendors', 'Advances', 'Purchasing', 'MH-09 / 10', () =>
   ], S.advances.slice().reverse(), { click: 'editADV', key: a => a.no, name: 'Advances' });
 });
 ACT.newADV = async () => {
+  if (!canAct('adv.create')) return toast('You cannot request advances.', 'bad');
   const no = await allocNumber('ADV'); if (!no) return;
   const a = { no, date: isoDate(new Date()), po: '', amount: null, reqBy: U.name, apprBy: '', paidDate: '', pvRef: '', remarks: '' };
   S.advances.push(a); commit('Advance number issued', a.no); render(); ACT.editADV(a.no);
@@ -1706,6 +1749,7 @@ view('grn', 'Goods receipt notes', 'GRN', 'Receiving', 'MH-11 / 12', () => {
   ], C.grn.slice().reverse(), { click: 'editGRN', key: r => r.g.no, name: 'GRN register' });
 });
 ACT.newGRN = async () => {
+  if (!canAct('grn.create')) return toast('You cannot receive goods.', 'bad');
   const no = await allocNumber('GRN'); if (!no) return;
   const g = { no, date: isoDate(new Date()), po: '', challan: '', by: U.name, remarks: '', lines: [] };
   S.grns.push(g); commit('GRN number issued', g.no); render(); ACT.editGRN(g.no);
@@ -1749,6 +1793,7 @@ view('srn', 'Service receipt notes', 'SRN', 'Receiving', 'MH-13 / 14', () => {
   ], C.srn.slice().reverse(), { click: 'editSRN', key: r => r.s.no, name: 'SRN register' });
 });
 ACT.newSRN = async () => {
+  if (!canAct('srn.create')) return toast('You cannot prepare service receipts.', 'bad');
   const no = await allocNumber('SRN'); if (!no) return;
   const s = { no, date: isoDate(new Date()), po: '', from: '', to: '', location: '', prepBy: U.name, confBy: '', remarks: '', lines: [] };
   S.srns.push(s); commit('SRN number issued', s.no); render(); ACT.editSRN(s.no);
@@ -1794,6 +1839,7 @@ view('bills', 'Bills & payment vouchers', 'Bills', 'Bills & payment', 'MH-15 / 1
   ], S.bills.slice().reverse(), { click: 'editBILL', key: b => b.no, name: 'Bills register' });
 });
 ACT.newBILL = async () => {
+  if (!canAct('bill.create')) return toast('You cannot enter bills.', 'bad');
   const no = await allocNumber('BILL'); if (!no) return;
   const b = { no, date: isoDate(new Date()), invNo: '', invDate: '', po: '', vendor: '', line: '', refs: '', amount: null, advAdj: 0, otherDed: 0, audit: '', auditRemarks: '', auditDate: '', pv: '', payDate: '', payRef: '', desc: '', mode: '', checks: {} };
   S.bills.push(b); commit('Bill entry number issued', b.no); render(); ACT.editBILL(b.no);
@@ -1922,6 +1968,7 @@ view('issues', 'Material issue slips', 'Issues', 'Stores', 'MH-17', () => {
   ], C.iss.slice().reverse(), { click: 'editISS', key: r => r.s.no, name: 'Issue register' });
 });
 ACT.newISS = async () => {
+  if (!canAct('issue.create')) return toast('You cannot issue material.', 'bad');
   const no = await allocNumber('ISS'); if (!no) return;
   const s = { no, date: isoDate(new Date()), issuedTo: '', job: '', recvBy: '', remarks: '', lines: [] };
   S.issues.push(s); commit('Issue slip number issued', s.no); render(); ACT.editISS(s.no);
@@ -2023,6 +2070,7 @@ view('laundry', 'Laundry log', 'Laundry Log', 'Housekeeping', 'MH-21', () => {
 ACT.editLaundry = id => {
   const ed = canEdit('Laundry Log') && may('HK Supervisor');
   if (!id) {
+    if (!canAct('laundry.create')) return toast('You cannot make laundry hand-overs.', 'bad');
     const linen = S.items.filter(i => num(i.par) > 0);
     const o = { date: isoDate(new Date()), slip: '' };
     modal('New laundry hand-over', fields([{ k: 'date', l: 'Date', t: 'date' }, { k: 'slip', l: 'Laundry slip no.', t: 'text', req: 1 }], o)
@@ -2220,20 +2268,43 @@ ACT.editUser = id => {
       if (S.users.some(x => x !== u && x.cid === u.reqCid)) return toast('That person is already linked to another user.', 'bad');
       u.cid = u.reqCid; u.reqCid = ''; closeModal(); commit('Link request approved', u.id); render(); toast(u.id + ' is now linked. Their page opens by itself.', 'ok');
     } }, SHARED && !isNew && u.reqCid && !u.cid && { l: 'Reject request', fn: () => { u.reqCid = ''; closeModal(); commit('Link request rejected', u.id); render(); } },
+    !isNew && SHARED && u.cid && may('Admin') && { l: 'Reset log-in password', fn: () => resetLoginPassword(u) },
     !isNew && !SHARED && { l: 'Set / reset password', fn: () => modal('Temporary password for ' + u.id, `<p>Give this temporary password to ${esc(u.name)} personally. They must change it at the first log-in.</p><div class="grid"><div class="fld"><label>Temporary password (min. ${S.settings.minPwd})</label><input type="password" id="tp1" autocomplete="new-password"></div><div class="fld"><label>Repeat</label><input type="password" id="tp2" autocomplete="new-password"></div></div>`,
       [{ l: 'Set password', cls: 'pri', fn: () => { const a = $('#tp1').value; if (a.length < S.settings.minPwd) return toast('Too short.', 'bad'); if (a !== $('#tp2').value) return toast('The two entries do not match.', 'bad'); u.salt = uid() + uid(); u.hash = pwdCode(a, u.salt); u.mustChange = true; closeModal(); commit('Password reset', u.id); render(); toast('Temporary password set for ' + u.id + '.', 'ok'); } }]) }]);
 };
+function actionRightsHtml() {
+  const lim = (S.access && S.access.__actions) || {};
+  const rows = ACTIONS.map(([id, label, mod]) => {
+    const allowed = lim[id] || ROLES.filter(r => S.access[mod] && S.access[mod][r] === 'E');
+    return `<tr><td>${esc(label)}</td><td>${esc(mod)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? '<span class="muted">always</span>' : `<input type="checkbox" class="aa" data-a="${id}" data-r="${esc(r)}" ${allowed.includes(r) ? 'checked' : ''}>`}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<h3>Who may create records</h3><p class="muted">A ticked role may create the record. The page must also be editable (E) for that role. Admin always may.</p><div class="tw"><table class="acc"><thead><tr><th>Action</th><th>Page</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function resetLoginPassword(u) {
+  modal('Reset log-in password - ' + u.id, `<p>Set a temporary password for ${esc(u.name)} and give it to them personally. They sign in with their email and this password. Their open sessions end.</p><div class="grid"><div class="fld"><label for="rp1">Temporary password (at least 8 characters)</label><input id="rp1" type="password" autocomplete="new-password"></div><div class="fld"><label for="rp2">Type it again</label><input id="rp2" type="password" autocomplete="new-password"></div></div>`,
+    [{ l: 'Set password', cls: 'pri', fn: async () => {
+      const a = $('#rp1').value, b = $('#rp2').value;
+      if (a.length < 8) return toast('At least 8 characters.', 'bad');
+      if (a !== b) return toast('The two entries do not match.', 'bad');
+      const r = await fetch('/api/admin/reset-password', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId: u.cid, password: a }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return toast(j.error || 'The password was not changed.', 'bad');
+      closeModal(); toast('Log-in password set for ' + u.id + '. Give it to them personally.', 'ok');
+    } }]);
+}
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
-  return `<p class="muted">E = can make entries, V = view only, H = hidden. Admin always has full access. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(S.access[m].Admin) : `<select class="ar r${S.access[m][r]}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], S.access[m][r], false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  return `<p class="muted">E = can make entries, V = view only, H = hidden. Admin always has full access. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
 });
-ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m][x.dataset.r] = x.value; }); commit('Access rights changed'); render(); toast('Rights saved.', 'ok'); };
+ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m] = S.access[x.dataset.m] || {}; S.access[x.dataset.m][x.dataset.r] = x.value; });
+  const lim = {}; ACTIONS.forEach(([id]) => { lim[id] = [...document.querySelectorAll('input.aa[data-a="' + id + '"]')].filter(x => x.checked).map(x => x.dataset.r); });
+  S.access.__actions = lim; commit('Access rights changed'); render(); toast('Rights saved.', 'ok'); };
 view('auditlog', 'Audit log', 'Audit Log', 'Admin', 'Log', () => `<p class="muted">Log-ins, approvals, closures, unlocks and changes, with user and time. It cannot be edited.</p>` + table('audit', [
   { h: 'Date & time', v: a => fdt(a.t) }, { h: 'User', v: a => esc(a.user) }, { h: 'Action', v: a => esc(a.action) }, { h: 'Details', v: a => esc(a.details) }], S.audit.slice().reverse(), { name: 'Audit log' }));
 /* ---------- Consolidated cash PV (MH-16B): small cleared bills paid together on one cash voucher ---------- */
 const cpvList = () => (S.cpvs = S.cpvs || []);
 ACT.newCPV = () => {
-  if (!canEdit('Consolidated PV')) return toast('You cannot create consolidated PVs.', 'bad');
+  if (!canAct('cpv.create')) return toast('You cannot create consolidated PVs.', 'bad');
   const cands = S.bills.filter(b => b.audit === 'Clear' && !b.payDate && !b.cpv && num(C.bill[b.no].net) > 0 && num(C.bill[b.no].net) <= num(S.settings.cpvMax));
   if (!cands.length) return toast('No cleared bills below the consolidated PV limit are waiting.', 'bad');
   modal('New consolidated cash PV', `<p class="muted">Tick the cleared bills to pay together on one cash voucher. Each bill must be at most ${fmt(S.settings.cpvMax)} IQD.</p>` + table('cpvpick', [
@@ -2310,19 +2381,51 @@ ACT.notifDone = id => {
   const n = notifList().find(x => x.id === id); if (!n || n.done) return;
   n.done = true; n.doneBy = U ? U.name || U.id : '-'; n.doneOn = nowDT(); commit('Notification done', n.event + ' ' + n.ref); render();
 };
+function noticeText(n) {
+  return `Subject: KUN MH - ${n.text} - ${n.ref}\n\nDate: ${fdt(n.t)}\nReference: ${n.ref}\nNotice: ${n.text}\n\nPlease open the Notifications page of the KUN MH application and take the action shown.\n`;
+}
+function noticeEmails(n) {
+  return [...new Set((S.users || []).filter(u => u.active === 'Y' && (n.to.includes(u.desig) || n.to.includes(u.role)) && /@/.test(u.contact || '')).map(u => u.contact.trim()))];
+}
+function noticeMailButtons(n) {
+  const mails = noticeEmails(n);
+  return `<button class="btn sm" data-act="notifCopy" data-id="${esc(n.id)}">Copy for e-mail</button>`
+    + (mails.length ? ` <a class="btn sm ghost" href="mailto:${esc(mails.join(';'))}?subject=${encodeURIComponent('KUN MH - ' + n.text + ' - ' + n.ref)}&body=${encodeURIComponent(noticeText(n))}">E-mail</a>` : ' <small class="muted">no e-mail address on file</small>');
+}
+ACT.notifCopy = id => {
+  const n = notifList().find(x => x.id === id); if (!n) return;
+  modal('Copy for e-mail', `<textarea class="inp" rows="10" readonly>${esc(noticeText(n))}</textarea>`, [], { wide: true });
+};
 view('notifs', 'Notifications and pending actions', 'Notifications', 'Admin', 'Log', () => {
   const me = U ? (U.desig || '') : '';
   const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
   const all = notifList().slice().reverse();
-  return `<p class="muted">Every notice the workbook sends is logged here. E-mail is not sent from this computer (no mail server is set up), so each notice is shown here until it is marked done.</p>`
+  return `<p class="muted">Every notice the workbook sends is logged here. E-mail is not sent by the application (no mail server is set up). Use Copy for e-mail, or the E-mail link, to send a notice yourself. Each notice stays here until it is marked done.</p>`
     + `<section class="card"><h3>Pending actions <span class="muted">${mine.length}</span></h3>` + table('notifmine', [
       { h: 'Date', v: n => fdt(n.t) }, { h: 'Event', v: n => esc(n.text) }, { h: 'Reference', v: n => `<b>${esc(n.ref)}</b>` }, { h: 'For', v: n => esc(n.to.join(', ')) },
+      { h: 'E-mail', v: n => noticeMailButtons(n) },
       { h: '', v: n => `<button class="btn sm" data-act="notifDone" data-id="${esc(n.id)}">Done</button>` }], mine, { name: 'Pending actions' }) + '</section>'
     + `<section class="card"><h3>Notice log</h3>` + table('notiflog', [
       { h: 'Date', v: n => fdt(n.t) }, { h: 'Event', v: n => esc(n.event) }, { h: 'Reference', v: n => esc(n.ref) }, { h: 'Notice', v: n => esc(n.text) },
       { h: 'Status', v: n => n.done ? esc('Done by ' + n.doneBy + ' ' + fdt(n.doneOn)) : esc(n.status) }], all, { name: 'Notice log' }) + '</section>';
 });
 
+view('mydesk', 'My desk', 'My desk', 'Overview', 'Home', () => {
+  const me = U ? (U.desig || '') : '';
+  const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
+  const openJobs = (S.jobs || []).filter(j => !j.completed);
+  const quick = [['po.create', 'newPO', 'New purchase order'], ['grn.create', 'newGRN', 'Receive goods (GRN)'], ['srn.create', 'newSRN', 'Service receipt (SRN)'],
+    ['bill.create', 'newBILL', 'Enter a bill'], ['issue.create', 'newISS', 'Issue slip'], ['job.create', 'newJob', 'New job card'],
+    ['laundry.create', 'editLaundry', 'Laundry hand-over'], ['cpv.create', 'newCPV', 'Consolidated cash PV']].filter(q => canAct(q[0]));
+  return `<p class="muted">Your open items: pending actions for your designation, your open job cards, and the record actions open to your role.</p>`
+    + `<p>${quick.map(q => `<button class="btn" data-act="${q[1]}">${esc(q[2])}</button>`).join(' ') || '<span class="muted">No record actions are open to your role.</span>'}</p>`
+    + `<section class="card"><h3>Pending actions for you <span class="muted">${mine.length}</span></h3>` + table('mydeskn', [
+      { h: 'Date', v: n => fdt(n.t) }, { h: 'Event', v: n => esc(n.text) }, { h: 'Reference', v: n => `<b>${esc(n.ref)}</b>` },
+      { h: '', v: n => `<button class="btn sm" data-act="notifDone" data-id="${esc(n.id)}">Done</button>` }], mine, { name: 'My pending actions' })
+    + `<p><button class="btn ghost sm" data-act="goto" data-id="notifs">All notifications</button></p></section>`
+    + `<section class="card"><h3>My open job cards <span class="muted">${openJobs.length}</span></h3>` + table('mydeskj', [
+      { h: 'Job card', v: j => `<b>${esc(j.no)}</b>` }, { h: 'Location', v: j => esc(j.location || j.room || '') }, { h: 'Priority', v: j => esc(j.priority || '') }, { h: 'Reported', v: j => fdt(j.reported) }], openJobs, { name: 'My open job cards' }) + '</section>';
+});
 view('numlog', 'Number log', 'Number Log', 'Admin', 'Log', () => `<p class="muted">Every document number ever issued. A number is never issued twice. Numbers missing from their register are flagged on the dashboard.</p>` + table('numlog', [
   { h: 'Type', v: n => esc(n.type) }, { h: 'Number', v: n => `<b>${esc(n.no)}</b>` }, { h: 'Issued on', v: n => fdt(n.t) }, { h: 'Issued by', v: n => esc(n.by) },
   { h: 'In register?', v: n => NUM_REG[n.type] ? flag(S[NUM_REG[n.type]].some(r => r.no === n.no) ? 'OK' : 'Missing from register') : '' }], S.numlog.slice().reverse(), { name: 'Number log' }));
@@ -2515,16 +2618,17 @@ function buildFromRemote() {
   });
   S = N; S.hkExplain = S.hkExplain || {}; S.counts = S.counts || {}; S.linenCounts = S.linenCounts || {}; S.meta = S.meta || { app: 'KUN-MH' };
 }
-function applyRemote() {
+function applyRemote(force) {
   if (!READY || !S) return;
-  if ((document.getElementById('modal') || {}).classList?.contains('open') || inputFocused()) { PENDING = true; return; }
-  PENDING = false;
+  if (!force && ((document.getElementById('modal') || {}).classList?.contains('open') || inputFocused())) { PENDING = true; document.getElementById('staleBar').hidden = false; return; }
+  PENDING = false; document.getElementById('staleBar').hidden = true;
   buildFromRemote(); recalc();
   if (U) U = S.users.find(u => u.id === U.id && u.active === 'Y' && u.cid === ME.id) || null;
   if (!U) return resolveUser();
   const y = window.scrollY; render(); window.scrollTo(0, y);
 }
-document.addEventListener('focusout', () => { if (SHARED && PENDING) setTimeout(applyRemote, 50); });
+document.addEventListener('focusout', () => { if (SHARED && PENDING && !((document.getElementById('modal') || {}).classList?.contains('open'))) setTimeout(applyRemote, 50); });
+ACT.refreshNow = () => applyRemote(true);
 
 /* ---------- document numbers: a short lock so two people never get the same number ---------- */
 if (SHARED) allocNumber = async type => {

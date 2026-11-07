@@ -19,6 +19,7 @@ const COLL_RE = /^[a-z_]{1,60}$/;
 const ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,190}$/;             // same characters the app allows in document ids
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);   // keeps log-in timing the same for unknown emails
 const DEADLOCK = '40P01';                                  // PostgreSQL error code for a deadlock
+const LOGIN_FAILS = new Map();                             // email -> { fails, until }: locked 30 s after 3 wrong passwords
 
 const pool = createPool();
 const app = express();
@@ -88,10 +89,18 @@ async function requireUser(req, res, next) {
 app.post('/api/login', async (req, res) => {
   const email = String((req.body && req.body.email) || '').trim().toLowerCase();
   const password = String((req.body && req.body.password) || '');
+  const lock = LOGIN_FAILS.get(email) || { fails: 0, until: 0 };
+  if (lock.until > Date.now()) throw httpError(429, 'invalid_argument', 'Too many attempts. Wait 30 seconds and try again.');
   const { rows } = await pool.query('SELECT id, email, name, password_hash, active FROM accounts WHERE email = $1', [email]);
   const account = rows[0];
   const ok = await bcrypt.compare(password, account ? account.password_hash : DUMMY_HASH);
-  if (!account || !ok || !account.active) throw httpError(401, 'invalid_argument', 'Wrong email or password.');
+  if (!account || !ok || !account.active) {
+    lock.fails += 1;
+    if (lock.fails >= 3) { lock.until = Date.now() + 30000; lock.fails = 0; }
+    LOGIN_FAILS.set(email, lock);
+    throw httpError(401, 'invalid_argument', 'Wrong email or password.');
+  }
+  LOGIN_FAILS.delete(email);
   const token = crypto.randomBytes(32).toString('hex');
   await pool.query('INSERT INTO sessions (token, account_id, expires_at) VALUES ($1, $2, now() + make_interval(hours => $3))',
     [sha256(token), account.id, SESSION_HOURS]);
@@ -109,6 +118,55 @@ app.post('/api/logout', async (req, res) => {
 });
 
 app.get('/api/me', requireUser, (req, res) => res.json(req.user));
+
+/* ---------- audit log (same format as the app's own audit entries) ---------- */
+async function logAudit(user, action, details) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const month = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const t = `${month}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  await txn(async client => {
+    const { rows } = await client.query("SELECT data FROM kv_docs WHERE coll = 'm_audit' AND id = $1 FOR UPDATE", [month]);
+    const doc = rows.length ? rows[0].data : { rows: {} };
+    doc.rows = doc.rows || {};
+    const order = Math.max(-1, ...Object.values(doc.rows).map(x => (x && typeof x.o === 'number' ? x.o : -1))) + 1;
+    const key = `${t.replace(/\D/g, '')}-${crypto.randomBytes(3).toString('hex')}`;
+    doc.rows[key] = { o: order, r: { k: key, t, user, action, details } };
+    await upsert(client, 'm_audit', month, doc, 'server');
+  });
+}
+
+/* ---------- passwords ---------- */
+// The in-app user linked to a log-in carries the role (users are linked through their account id).
+async function roleOf(accountId) {
+  const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'm_users' AND id = 'all'");
+  const users = (rows[0] && rows[0].data.rows) || {};
+  const linked = Object.values(users).map(x => x && x.r).find(r => r && r.cid === accountId);
+  return linked ? linked.role : null;
+}
+app.post('/api/admin/reset-password', requireUser, async (req, res) => {
+  if ((await roleOf(req.user.id)) !== 'Admin') throw httpError(403, 'invalid_argument', 'Only the Admin can reset a log-in password.');
+  const accountId = String((req.body && req.body.accountId) || '');
+  const password = String((req.body && req.body.password) || '');
+  if (!ID_RE.test(accountId)) throw httpError(400, 'invalid_argument', 'Bad log-in id.');
+  if (password.length < 8) throw httpError(400, 'invalid_argument', 'Use at least 8 characters.');
+  const r = await pool.query('UPDATE accounts SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(password, 10), accountId]);
+  if (!r.rowCount) throw httpError(404, 'invalid_argument', 'That log-in does not exist.');
+  await pool.query('DELETE FROM sessions WHERE account_id = $1', [accountId]);
+  const target = await pool.query('SELECT email FROM accounts WHERE id = $1', [accountId]);
+  await logAudit(req.user.name || req.user.email, 'Log-in password reset', target.rows[0] ? target.rows[0].email : accountId);
+  res.json({ ok: true });
+});
+app.post('/api/me/password', requireUser, async (req, res) => {
+  const current = String((req.body && req.body.current) || '');
+  const next = String((req.body && req.body.password) || '');
+  const { rows } = await pool.query('SELECT password_hash FROM accounts WHERE id = $1', [req.user.id]);
+  if (!rows.length || !(await bcrypt.compare(current, rows[0].password_hash))) throw httpError(400, 'invalid_argument', 'The current password is wrong.');
+  if (next.length < 8) throw httpError(400, 'invalid_argument', 'Use at least 8 characters.');
+  await pool.query('UPDATE accounts SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(next, 10), req.user.id]);
+  await logAudit(req.user.name || req.user.email, 'Password changed', req.user.email);
+  res.json({ ok: true });
+});
 
 /* ---------- people directory (used for the names shown in the app) ---------- */
 app.get('/api/people', requireUser, async (req, res) => {
