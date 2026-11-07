@@ -13,7 +13,8 @@
     "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
     "masters:import": "node --env-file-if-exists=.env src/import-masters.js",
     "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js",
-    "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js"
+    "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js",
+    "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
