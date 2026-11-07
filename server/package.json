@@ -12,7 +12,8 @@
     "user": "node --env-file-if-exists=.env src/manage.js",
     "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
     "masters:import": "node --env-file-if-exists=.env src/import-masters.js",
-    "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js"
+    "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js",
+    "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

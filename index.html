@@ -1877,6 +1877,30 @@ App.suggestAdv = no => {
   const amt = num($('#f_amount').value), c = C.bill[no];
   $('#f_advAdj').value = Math.round(Math.min(amt * num(p.adv), Math.max(0, c.advBalBefore)));
 };
+// The latest rate paid for an item on an earlier PO (not the PO itself, and not after this PO's date).
+function previousRate(code, cur) {
+  let best = null;
+  S.pos.forEach(q => {
+    if (q.no === cur.no || q.cancel) return;
+    if (q.date && cur.date && q.date > cur.date) return;
+    (q.lines || []).forEach(l => {
+      if (l.item === code && num(l.rate) > 0 && (!best || (q.date || '') > (best.date || '')))
+        best = { rate: num(l.rate), vendor: q.vendor, date: q.date, po: q.no };
+    });
+  });
+  return best;
+}
+// Price reference shown while a bill is filled in: each item of the PO, its rate, the previous purchase rate and the MPL rate.
+function priceHistoryHtml(p) {
+  const rows = (p.lines || []).filter(l => l.item).map(l => {
+    const prev = previousRate(l.item, p), m = mplRate(l.item, p.vendor);
+    return `<tr><td><b>${esc(l.item)}</b> ${esc(itemName(l.item))}</td><td class="n">${fmt(num(l.rate))}</td>` +
+      `<td class="n"><b>${prev ? fmt(prev.rate) : '-'}</b></td><td>${prev ? esc(prev.vendor) + ' &middot; ' + fdate(prev.date) + ' &middot; ' + esc(prev.po) : 'no earlier purchase'}</td>` +
+      `<td class="n">${m ? fmt(m.rate) : '-'}</td></tr>`;
+  }).join('');
+  if (!rows) return '';
+  return `<h4>Price reference - previous purchase rate of each item (IQD)</h4><div class="tw"><table class="lt"><thead><tr><th>Item</th><th class="n">Rate on this PO</th><th class="n">Previous rate</th><th>Previous purchase</th><th class="n">MPL rate</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 ACT.editBILL = no => {
   const b = S.bills.find(x => x.no === no), r = C.bill[no], p = b.po ? findPO(b.po) : null;
   const paid = !!b.payDate;
@@ -1886,6 +1910,7 @@ ACT.editBILL = no => {
   modal('Bill ' + no, `<div class="sum">${flag(r.pay)} Net payable <b>${fmt(r.net)}</b> IQD &middot; 3-way match ${flags(r.match)}</div>
     ${b.audit === 'Clear' && !paid ? '<p class="note">Cleared by the Internal Auditor - the bill entry is locked. Accounts records the payment.</p>' : ''}${paid ? '<p class="note">Paid - locked.</p>' : ''}
     <div class="grid"><div class="fld"><label>PO no. (blank for a purchase below ${fmt(S.settings.poFrom)} IQD)</label><select data-doc="${esc(no)}" onchange="App.billPO(this)" ${edM ? '' : 'disabled'}>${opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po)}</select></div></div>`
+    + (p ? priceHistoryHtml(p) : '')
     + fields([
       { k: 'date', l: 'Date submitted to Accounts', t: 'date', ed: edM }, { k: 'invNo', l: 'Vendor invoice no.', t: 'text', ed: edM, req: 1 }, { k: 'invDate', l: 'Invoice date', t: 'date', ed: edM },
       { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1 },
@@ -2164,6 +2189,7 @@ ACT.editVendor = code => {
     { k: 'avl', l: 'On AVL? (Y/N)', t: 'sel', o: ['Y', 'N'], ed, blank: false }, { k: 'bank', l: 'Bank account name & bank (verified)', t: 'text', ed }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], v),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
       const o = Object.assign({}, v); readInto(b, o); if (!o.name) return toast('Name is required.', 'bad');
+      if (/[\u0600-\u06FF]/.test(o.name)) return toast('Vendor names must be written in English letters.', 'bad');
       if (S.vendors.some(x => x !== v && (x.code === o.code || x.name === o.name))) return toast('Code and name must be unique.', 'bad');
       Object.assign(v, o); if (isNew) S.vendors.push(v); closeModal(); commit(isNew ? 'Vendor added' : 'Vendor updated', v.name); render();
     } }]);
