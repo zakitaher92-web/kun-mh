@@ -304,6 +304,8 @@ Use this part to bring an installation that already runs version 1.9 (Part 7) up
 | Access rights (`index.html`) | Table **Who may create records**: choose which roles may create purchase orders, GRNs, bills, issue slips, job cards, laundry hand-overs and consolidated PVs. Admin always may | Copy the file (step 3). Existing rights are kept |
 | Notifications (`index.html`) | **Copy for e-mail** and an **E-mail** link on each pending notice | Copy the file (step 3) |
 | Roles | Sigat members and Internal Auditors set to their own role | Part 7, step 5a (once; skip if done) |
+| Vendor names | The 58 vendors whose names were in Arabic are now in English, with every saved reference changed. Vendor names must be in English letters | `setup\10-vendor-names-english.bat` (step 4a, once) |
+| Budget codes | MT-01 to MT-05, HK-01 and HK-02 become one line **MT**; new line **SR**; service and labour categories move to SR; the HK item codes become ITM codes (HK-001 is now ITM-001) | `setup\11-budget-merge-1.9.bat` (step 4b, once) |
 
 No data needs converting. The new access rights default to the existing page rights. Existing GRNs and POs are not changed.
 
@@ -323,6 +325,8 @@ No data needs converting. The new access rights default to the existing page rig
    Robocopy exit codes 0 to 7 mean success.
 3. **Check the files.** `C:\KUN\kun-mh\index.html` and `C:\KUN\kun-mh\server\src\server.js` should now have the date of the new package.
 4. **Check the packages.** Nothing new is installed. If you are unsure, run `npm install` once in `C:\KUN\kun-mh\server`.
+4a. **Vendor names (once).** Run `setup\10-vendor-names-english.bat` as administrator, with the app stopped. It shows the 58 renames first and saves them only when you type `Y`. It writes a backup to the `backups` folder first. Check the new names with the Head of Accounts: names marked (2) may be duplicates of existing vendors, and should be merged in Vendors if they are the same vendor. Skip this step if the names are already in English (the script then reports nothing to rename).
+4b. **Budget codes and item codes (once).** Run `setup\11-budget-merge-1.9.bat` as administrator, with the app stopped. It shows the change first and saves it only when you type `Y`, after writing a backup. If it reports that the old budget lines were not found, the change is already made: skip this step.
 5. **Start the app.** Double-click `setup\6-start-app.bat`, then check that `logs\server.log` ends with `KUN MH server running`.
 6. **Roles (once).** If the Sigat members and Internal Auditors still show the role Admin, run `setup\9-fix-roles-1.9.bat` as administrator and type `Y` when asked. Skip this step if the roles are already correct.
 7. **Check the screens.** Sign in from another computer and check:
@@ -348,6 +352,8 @@ No data needs converting. The new access rights default to the existing page rig
 - [ ] App started, and `logs\server.log` shows the server running
 - [ ] Menu, header and access-rights checks done (step 7)
 - [ ] Roles checked, or Part 7, step 5a run (step 6)
+- [ ] Vendor names checked, or step 4a run
+- [ ] Budget codes merged (MT, SR, ITM), or step 4b run; Budget and Items checked
 
 ---
 
