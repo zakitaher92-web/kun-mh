@@ -290,6 +290,67 @@ Rooms (`m_rooms`) are not part of the master import. Their status keeps changing
 
 ---
 
+## Part 8 - Apply the latest changes to the local server
+
+Use this part to bring an installation that already runs version 1.9 (Part 7) up to the latest changes. It applies to the local server (the office server running the app) and to a copy of the same version. The database layout does not change, and no packages are added. Only the app page and the server code change, so a restart is needed.
+
+**What changes**
+
+| Area | Change | How it is applied |
+|---|---|---|
+| Screens (`index.html`) | **My desk** home page; **Items & MPL rates** (the MPL is on the Items page, and its menu entry is removed); **Log out** button in the header (server mode); GRN **No PO** option; typed items on PO lines, with new items added to the item master | Copy the file (step 3) |
+| Server (`server\src\server.js`) | Sign-in locked for 30 seconds after three wrong passwords; Admin can set a temporary log-in password for a linked user; users can change their own password; each change is recorded in the audit log | Copy the file, then restart the app (step 5) |
+| Users (`index.html`) | **My account** button in the header: shows the person's details, changes their own password, and signs out | Copy the file (step 3) |
+| Access rights (`index.html`) | Table **Who may create records**: choose which roles may create purchase orders, GRNs, bills, issue slips, job cards, laundry hand-overs and consolidated PVs. Admin always may | Copy the file (step 3). Existing rights are kept |
+| Notifications (`index.html`) | **Copy for e-mail** and an **E-mail** link on each pending notice | Copy the file (step 3) |
+| Roles | Sigat members and Internal Auditors set to their own role | Part 7, step 5a (once; skip if done) |
+
+No data needs converting. The new access rights default to the existing page rights. Existing GRNs and POs are not changed.
+
+**Before you start**
+
+- Make sure you have a backup from the last upgrade, or make one now: run `setup\8-backup.bat`.
+- Note that the sign-in lock-out is held in the server's memory. It clears when the app restarts, so a user who was locked can sign in again after a restart.
+- Two people may be working in the app during the update. Tell them to save their work and log out first.
+
+**Steps**
+
+1. **Stop the app.** Double-click `setup\stop-app.bat` (or run it from the installed folder).
+2. **Copy the new files.** From the new package (or from this computer's repository folder), replace `NEW-PACKAGE` with that folder and `C:\KUN\kun-mh` with the installed folder:
+   ```bat
+   robocopy "NEW-PACKAGE\kun-mh" "C:\KUN\kun-mh" /E /XF .env /XD node_modules logs iis
+   ```
+   Robocopy exit codes 0 to 7 mean success.
+3. **Check the files.** `C:\KUN\kun-mh\index.html` and `C:\KUN\kun-mh\server\src\server.js` should now have the date of the new package.
+4. **Check the packages.** Nothing new is installed. If you are unsure, run `npm install` once in `C:\KUN\kun-mh\server`.
+5. **Start the app.** Double-click `setup\6-start-app.bat`, then check that `logs\server.log` ends with `KUN MH server running`.
+6. **Roles (once).** If the Sigat members and Internal Auditors still show the role Admin, run `setup\9-fix-roles-1.9.bat` as administrator and type `Y` when asked. Skip this step if the roles are already correct.
+7. **Check the screens.** Sign in from another computer and check:
+   - the menu has **My desk** (first in the *Overview* group) and **Items & MPL rates**, with no separate *Master price list* entry;
+   - the header shows **My account** and **Log out**;
+   - on **Notifications**, each pending notice has **Copy for e-mail**;
+   - on **Access rights**, the table **Who may create records** is shown below the page rights;
+   - on **Purchase orders**, the item lines accept a typed item name;
+   - on **Goods receipt notes**, the PO dropdown has **No PO**.
+8. **Check the password tools.** As the Head of Accounts, open a linked user from **Users**: the dialog shows **Reset log-in password**. Do not reset a real user's password as a test; use a temporary test log-in if you need to try it.
+
+**Rollback** (if the new version does not work)
+
+1. Stop the app (`setup\stop-app.bat`).
+2. Copy the files back from the backup folder (`C:\KUN\kun-mh-before-1.9`, or the folder you copied before this update), using the same `robocopy` command with the two folders swapped and without `/XF .env`.
+3. Start the app (`setup\6-start-app.bat`).
+
+**Local server checklist**
+
+- [ ] Backup made (`setup\8-backup.bat`)
+- [ ] Users told to save and log out
+- [ ] App stopped, new files copied with `robocopy`, `server\.env` kept
+- [ ] App started, and `logs\server.log` shows the server running
+- [ ] Menu, header and access-rights checks done (step 7)
+- [ ] Roles checked, or Part 7, step 5a run (step 6)
+
+---
+
 ## Security checklist
 
 - [ ] Only IIS (ports 8080 and 8443) is reachable from the network. Ports 3100 and 5433 are closed to the network (`check-access.bat` confirms).
