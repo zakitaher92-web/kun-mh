@@ -1161,6 +1161,13 @@ ACT.closeModal = closeModal;
 function confirmBox(title, text, okLabel, fn, o = {}) {
   modal(title, `<p>${text}</p>${o.input ? `<div class="grid">${o.input}</div>` : ''}`, [{ l: okLabel, cls: o.danger ? 'danger' : 'pri', fn }]);
 }
+// Phase 3 (gap A3): destructive actions need the typed word, and show how many records they remove.
+const DATA_KINDS = ['pos', 'advances', 'grns', 'srns', 'bills', 'issues', 'jobs', 'laundry', 'ppm', 'items', 'vendors', 'rooms', 'users'];
+function recordCount(d) { return DATA_KINDS.reduce((n, k) => n + ((d && Array.isArray(d[k])) ? d[k].length : 0), 0); }
+function typedConfirm(title, text, word, okLabel, fn) {
+  modal(title, `<p>${text}</p><div class="grid"><div class="fld"><label>Type <b>${esc(word)}</b> to confirm</label><input id="cfmWord" autocomplete="off"></div></div>`,
+    [{ l: okLabel, cls: 'danger', fn: () => { if ((($('#cfmWord') || {}).value || '').trim() !== word) return toast(`Type ${word} exactly to confirm.`, 'bad'); fn(); } }]);
+}
 function refresh() { recalc(); render(); }
 
 /* ---------- printing: print, PDF (browser), Word ---------- */
@@ -2500,14 +2507,14 @@ App.restore = inp => {
   const f = inp.files[0]; if (!f) return;
   const rd = new FileReader();
   rd.onload = () => {
-    try { const d = JSON.parse(rd.result); if (d.meta?.app !== 'KUN-MH' || !Array.isArray(d.pos)) throw new Error('Not a KUN M&H backup file'); confirmBox('Restore backup?', (SHARED ? 'The shared data for every user' : 'Everything in this browser') + ' is replaced with the backup of ' + esc(f.name) + '.', 'Restore', () => {
+    try { const d = JSON.parse(rd.result); if (d.meta?.app !== 'KUN-MH' || !Array.isArray(d.pos)) throw new Error('Not a KUN M&H backup file'); typedConfirm('Restore backup?', (SHARED ? 'The shared data for every user' : 'Everything in this browser') + ' is replaced with the backup of ' + esc(f.name) + ' (' + recordCount(d) + ' records).', 'RESTORE', 'Restore', () => {
       const me = U.id;
       if (SHARED) { d.users = S.users; }   // keep the current people links
       S = d; S.hkExplain = S.hkExplain || {}; S.counts = S.counts || {}; S.linenCounts = S.linenCounts || {};
       U = S.users.find(u => u.id === me) || null; closeModal();
       if (!U) { saveData(); return renderLogin(); }
       commit('Backup restored', f.name); render(); toast('Backup restored.', 'ok');
-    }, { danger: true }); }
+    }); }
     catch (e) { toast('Could not read the backup: ' + e.message, 'bad'); }
   };
   rd.readAsText(f);
@@ -2526,10 +2533,10 @@ ACT.clearEx = which => needPassword(which === 'tx' ? 'Clear example transactions
   S.meta.examples = S.pos.some(p => p.ex) || S.items.some(i => i.ex);
   closeModal(); commit(which === 'tx' ? 'Example transactions cleared' : 'Example masters cleared'); render(); toast('Done.', 'ok');
 });
-ACT.resetAll = () => confirmBox('Reset to example data?', SHARED ? 'The shared data for every user is replaced by the original example data. Users and their links are kept. Download a backup first if you need the current data.' : 'Everything in this browser is replaced by the original example data, including users and passwords. Download a backup first if you need the current data.', 'Reset', () => {
+ACT.resetAll = () => typedConfirm('Reset to example data?', (SHARED ?'The shared data for every user is replaced by the original example data. Users and their links are kept. Download a backup first if you need the current data.' : 'Everything in this browser is replaced by the original example data, including users and passwords. Download a backup first if you need the current data.') + ' This replaces ' + recordCount(S) + ' records.', 'RESET', 'Reset', () => {
   if (SHARED) { const users = S.users, me = U.id; S = seedData(); S.users = users; U = S.users.find(u => u.id === me); closeModal(); commit('Reset to example data'); render(); return; }
   S = seedData(); saveData(); U = null; closeModal(); renderLogin();
-}, { danger: true });
+});
 
 </script>
 <script>
