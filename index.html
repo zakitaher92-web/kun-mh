@@ -955,7 +955,8 @@ function exceptions() {
     ['GRN lines not OK (no PO, excess, not on PO, rejected)', C.grn.filter(r => r.check !== 'OK').length, 'GRN - GRN Officer', 'grn'],
     ['SRN lines not OK (no PO, excess, PO closed, signatures missing)', C.srn.filter(r => r.check !== 'OK').length, 'SRN - Masool', 'srn'],
     ['Bills failing 3-way match', S.bills.filter(b => C.bill[b.no].match !== 'OK').length, 'Bills - Internal Auditor', 'bills'],
-    ['Bills on hold / query', S.bills.filter(b => !b.payDate && (b.audit === 'Hold' || b.audit === 'Query')).length, 'Bills - Masool to resolve', 'bills'],
+    // Phase 4 (F4/U2): same status rule as the Bills register (C.bill[].pay), so the two cannot disagree
+    ['Bills on hold / query', S.bills.filter(b => /On hold|Query/.test(C.bill[b.no].pay)).length, 'Bills - Masool to resolve', 'bills'],
     ['Issue slips not OK (exceeds stock, no job card)', C.iss.filter(r => r.check !== 'OK').length, 'Issues', 'issues'],
     ['Stock items at or below re-order level', Object.values(C.stock).filter(s => /Re-order/.test(s.status)).length, 'Stores - raise PO', 'stores'],
     ['Negative stock / count differences', Object.values(C.stock).filter(s => /Negative|Count difference/.test(s.status)).length, 'Stores - post adjustment with approval', 'stores'],
@@ -1050,11 +1051,23 @@ ACT.toggleNav = () => $('#nav').classList.toggle('open');
 /* ---------- tables ---------- */
 // cols: [{h, v:(row)=>html, x:(row)=>export value, n:true numeric, w}]
 const TABLES = {};
+// Phase 5 (gap U3): what a page with no rows yet should tell the user to do first.
+const EMPTY_HINT = {
+  srn: 'No service receipts yet. Prepare one after the service is done, against an approved PO.',
+  adv: 'No advances yet. An advance can be requested only from a PO whose terms allow one.',
+  cpv: 'No cash vouchers yet. Cleared bills of up to the cash-PV limit can be grouped here on one voucher.',
+  iss: 'No issue slips yet. Stock is issued to a job card or a department, and needs a counted stock balance.',
+  jobs: 'No job cards yet. Log a request on the Service desk or here; a job card number is issued.',
+  ppm: 'No PPM or AMC equipment yet. Add the equipment with its frequency and due date, or import it from Excel.',
+  laundry: 'No laundry hand-overs yet. Record the linen handed to the laundry and its return here.',
+  hk: 'No housekeeping norms yet. Set the norm for each consumable in Items; consumption is checked against it here.',
+  linen: 'No linen par levels yet. Set the par per bed for each linen item in Items.',
+};
 function table(id, cols, rows, o = {}) {
   TABLES[id] = { cols, rows, name: o.name || id };
   const head = cols.map(c => `<th class="${c.n ? 'n' : ''}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${esc(c.h)}</th>`).join('');
   const body = rows.length ? rows.map((r, i) => `<tr ${o.click ? `data-act="${o.click}" data-id="${esc(o.key ? o.key(r) : i)}" class="click ${o.rowCls ? o.rowCls(r) : ''}"` : (o.rowCls ? `class="${o.rowCls(r)}"` : '')}>${cols.map(c => `<td class="${c.n ? 'n' : ''}${c.w ? ' wrap' : ''}">${c.v(r) ?? ''}</td>`).join('')}</tr>`).join('')
-    : `<tr><td colspan="${cols.length}" class="empty">${esc(o.empty || 'Nothing here yet.')}</td></tr>`;
+    : `<tr><td colspan="${cols.length}" class="empty">${esc(o.empty || EMPTY_HINT[id] || 'Nothing here yet.')}</td></tr>`;
   const foot = o.foot ? `<tfoot><tr>${o.foot.map((f, i) => `<td class="${cols[i] && cols[i].n ? 'n' : ''}">${f ?? ''}</td>`).join('')}</tr></tfoot>` : '';
   const tools = o.noTools ? '' : `<div class="ttools"><input type="search" placeholder="Filter..." oninput="App.filter('${id}', this.value)"><span class="cnt">${rows.length} row${rows.length === 1 ? '' : 's'}</span><button class="btn ghost sm" data-act="csv" data-id="${id}">Export to Excel (CSV)</button></div>`;
   return `${tools}<div class="tw"><table id="t_${id}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>`;
@@ -1540,15 +1553,15 @@ ACT.editPPM = id => {
 /* ===== Guide ===== */
 view('guide', 'How the process works', 'Guide', 'Overview', 'Guide', () => `
   <section class="card"><h3>The flow</h3><ol class="flow">
-  <li><b>Budget</b> by line, phased by month (MH-02). Lines with a zaereen-day basis (VAR) follow zaereen-days; other lines follow calendar days.</li>
-  <li><b>Items, vendors and the MPL</b> (MH-03/04/05) are kept by the Head of Accounts. The MPL is approved with the password and locked.</li>
-  <li><b>Which document?</b> Below ${fmt(S.settings.poFrom)} IQD: bill + payment voucher, no PO. From ${fmt(S.settings.poFrom)} IQD: Purchase Order. The app turns it into a PO-cum-Quotation (minimum ${S.settings.minQuotes} quotations) when the value calls for it, and prints the signatures needed.</li>
-  <li><b>Budget check</b> by the Internal Auditor before the PO is issued. Over budget: Sigat approves a revision first.</li>
-  <li><b>Advance</b> only if the PO terms provide for it (MH-09/10).</li>
-  <li><b>Goods: GRN</b> by the GRN Officer, only against an approved PO (MH-11/12). <b>Services: SRN</b> prepared by the Masool, confirmed by the user in charge (MH-13/14).</li>
-  <li><b>Bill</b> entered within 3 working days with the payment voucher (MH-15/16A). The app runs the 3-way match.</li>
-  <li><b>Pre-payment audit</b> (MH-16): Clear / Hold / Query. Accounts pays only Clear bills.</li>
-  <li><b>Close PO</b> when fully received and billed. A closed PO is locked for ever.</li>
+  <li><b><span class="gl" style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="budget">Budget</span></b> by line, phased by month (MH-02). Lines with a zaereen-day basis (VAR) follow zaereen-days; other lines follow calendar days.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="items">Items, vendors and the MPL</span></b> (MH-03/04/05) are kept by the Head of Accounts. The MPL is approved with the password and locked.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Which document?</span></b> Below ${fmt(S.settings.poFrom)} IQD: bill + payment voucher, no PO. From ${fmt(S.settings.poFrom)} IQD: Purchase Order. The app turns it into a PO-cum-Quotation (minimum ${S.settings.minQuotes} quotations) when the value calls for it, and prints the signatures needed.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Budget check</span></b> by the Internal Auditor before the PO is issued. Over budget: Sigat approves a revision first.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="adv">Advance</span></b> only if the PO terms provide for it (MH-09/10).</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="grn">Goods: GRN</span></b> by the GRN Officer, only against an approved PO (MH-11/12). <b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="srn">Services: SRN</span></b> prepared by the Masool, confirmed by the user in charge (MH-13/14).</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="bills">Bill</span></b> entered within 3 working days with the payment voucher (MH-15/16A). The app runs the 3-way match.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="bills">Pre-payment audit</span></b> (MH-16): Clear / Hold / Query. Accounts pays only Clear bills.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Close PO</span></b> when fully received and billed. A closed PO is locked for ever.</li>
   <li>Alongside: issue slips and stores (MH-17/18), housekeeping norms (MH-19), linen and laundry (MH-20/21), service desk and job cards (MH-22), PPM and AMC (MH-23), dashboard (MH-24).</li></ol></section>
   <div class="two"><section class="card"><h3>Golden rules</h3><ul>
   <li>No PO, no purchase of ${fmt(S.settings.poFrom)} IQD or more. No PO, no GRN. No SRN, no payment for labour or services.</li>
@@ -2351,7 +2364,7 @@ function resetLoginPassword(u) {
 }
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
-  return `<p class="muted">E = can make entries, V = view only, H = hidden. Admin always has full access. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
+  return `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
 });
 ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m] = S.access[x.dataset.m] || {}; S.access[x.dataset.m][x.dataset.r] = x.value; });
   const lim = {}; ACTIONS.forEach(([id]) => { lim[id] = [...document.querySelectorAll('input.aa[data-a="' + id + '"]')].filter(x => x.checked).map(x => x.dataset.r); });
