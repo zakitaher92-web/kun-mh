@@ -238,3 +238,20 @@ function currentMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+test('with devUser set (local test server only) every request acts as that user, without log-in', async () => {
+  const devUser = { id: 'a-adm', email: 'admin@example.test', name: 'Head of Accounts' };
+  await withServer(seedPool(), async ({ base }) => {
+    const me = await call(base, 'GET', '/api/me');
+    assert.equal(me.status, 200);
+    assert.equal(me.json.id, 'a-adm');
+    const w = await call(base, 'PUT', '/api/docs/cfg/access', { body: { data: { v: {} } } });
+    assert.equal(w.status, 200, 'the dev user is Admin, so it may change the access matrix');
+  }, { devUser });
+});
+
+test('without devUser the production rule holds: no session means 401', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    assert.equal((await call(base, 'GET', '/api/me')).status, 401);
+  });
+});

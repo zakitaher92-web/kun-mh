@@ -82,6 +82,9 @@ function createApp(pool, options = {}) {
   }
   async function requireUser(req, res, next) {
     try {
+      // Local test server only (testing/dev-server.js): skips the log-in and acts as the given user.
+      // The production server never passes options.devUser, so this has no effect there.
+      if (options.devUser) { req.user = options.devUser; return next(); }
       const user = await currentUser(req);
       if (!user) return next(httpError(401, 'revoked', 'Log in first'));
       req.user = user;
