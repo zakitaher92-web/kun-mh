@@ -316,6 +316,7 @@ function createApp(pool, options = {}) {
     } catch (e) { next(e); }
   });
   app.get('/server-adapter.js', (req, res) => res.type('js').sendFile(path.join(CLIENT_DIR, 'server-adapter.js')));
+  app.get('/rules.js', (req, res) => res.type('js').sendFile(path.join(APP_DIR, 'rules.js')));   // calculation rules (page + tests)
 
   /* ---------- errors ---------- */
   // eslint-disable-next-line no-unused-vars

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script src="rules.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KUN Maintenance & Housekeeping</title>
 <style>
@@ -735,7 +736,7 @@ function recalc() {
       if (p.closedOn && b.date > p.closedOn.slice(0, 10)) f.push('PO closed');
       const recvOver = r.received > 0 ? r.billedToDate / r.received - 1 : (r.billedToDate > 0 ? Infinity : 0);
       const poOver = r.poValue > 0 ? r.billedToDate / r.poValue - 1 : 0;
-      if (Math.max(recvOver, poOver) > num(st.billTol) + 1e-9 && !b.varBy) f.push('Above received / PO by more than ' + pct(num(st.billTol)) + ' - variance approval needed');
+      if (KUNRules.needsVarianceApproval(recvOver, poOver, num(st.billTol)) && !b.varBy) f.push('Above received / PO by more than ' + pct(num(st.billTol)) + ' - variance approval needed');
       if (adj > r.advBalBefore + 1) f.push('Advance adjusted more than balance');
       if (num(p.adv) > 0 && r.advBalBefore > 1 && adj + 1 < Math.min(amt * num(p.adv), r.advBalBefore)) f.push('Advance not adjusted as per PO terms');
       if (b.invDate && b.invDate < p.date) f.push('Invoice dated before PO');
@@ -745,7 +746,7 @@ function recalc() {
     if (b.invNo && invKey[k] > 1) f.push('Duplicate invoice no.');
     if (!b.invNo) f.push('Invoice no. missing');
     r.match = f.length ? f.join('; ') : 'OK';
-    r.pay = b.payDate ? 'Paid' : b.audit === 'Clear' ? 'Cleared - awaiting payment' : b.audit === 'Hold' ? 'On hold' : b.audit === 'Query' ? 'Query' : 'Awaiting audit';
+    r.pay = KUNRules.billPayStatus(b);
     r.paid = b.payDate ? r.net : 0;
     if (pc) { pc.billed += amt; pc.advAdj += adj; if (b.payDate) pc.paidNet += r.net; }
     C.bill[b.no] = r;
@@ -756,11 +757,11 @@ function recalc() {
   S.pos.slice().sort((a, b) => (a.date + a.no).localeCompare(b.date + b.no)).forEach(p => {
     const c = C.po[p.no];
     const v = c.value;
-    c.docType = v > num(st.qcpoAbove) ? 'PO-cum-Quotation' : v >= num(st.poFrom) ? 'PO' : 'PO (below PO limit)';
-    c.approval = v <= num(st.masoolLimit) ? 'Maintenance Masool' : v <= num(st.masoolHoaLimit) ? 'Masool + Head of Accounts' : 'Masool + Head of Accounts + Sigat';
+    c.docType = KUNRules.docTypeFor(v, { qcpoAbove: num(st.qcpoAbove), poFrom: num(st.poFrom) });
+    c.approval = KUNRules.approvalFor(v, { masoolLimit: num(st.masoolLimit), masoolHoaLimit: num(st.masoolHoaLimit) });
     c.above = c.lines.filter(l => /^Above/.test(l.price)).length;
     c.notMpl = c.lines.filter(l => l.price === 'Not on MPL').length;
-    c.priceAppr = c.above ? (v <= num(st.masoolLimit) ? 'Head of Accounts' : 'Sigat') : '';
+    c.priceAppr = KUNRules.priceApprovalFor(v, c.above > 0, { masoolLimit: num(st.masoolLimit) });
     c.effective = p.cancel ? 0 : p.shortClosed ? c.received : v;
     const m = p.date ? +p.date.slice(5, 7) : 1;
     c.ytd = ytdBudget(p.line, m);
@@ -804,7 +805,7 @@ function recalc() {
     const pc = C.po[a.po], r = C.adv[a.no];
     r.balance = pc ? pc.advPaid - pc.advAdj : 0;
     r.days = a.paidDate ? daysBetween(a.paidDate, reportDate()) : null;
-    r.status = !a.paidDate ? 'Not paid yet' : r.balance <= 0.5 ? 'Adjusted' : r.days > num(st.advDays) ? 'Not adjusted - follow up' : 'Being adjusted';
+    r.status = KUNRules.advanceStatus(a.paidDate, r.balance, r.days, num(st.advDays));
   });
 
   // Job cards
@@ -2375,7 +2376,7 @@ view('auditlog', 'Audit log', 'Audit Log', 'Admin', 'Log', () => `<p class="mute
 const cpvList = () => (S.cpvs = S.cpvs || []);
 ACT.newCPV = () => {
   if (!canAct('cpv.create')) return toast('You cannot create consolidated PVs.', 'bad');
-  const cands = S.bills.filter(b => b.audit === 'Clear' && !b.payDate && !b.cpv && num(C.bill[b.no].net) > 0 && num(C.bill[b.no].net) <= num(S.settings.cpvMax));
+  const cands = S.bills.filter(b => b.audit === 'Clear' && !b.payDate && !b.cpv && KUNRules.cashPvEligible(num(C.bill[b.no].net), num(S.settings.cpvMax)));
   if (!cands.length) return toast('No cleared bills below the consolidated PV limit are waiting.', 'bad');
   modal('New consolidated cash PV', `<p class="muted">Tick the cleared bills to pay together on one cash voucher. Each bill must be at most ${fmt(S.settings.cpvMax)} IQD.</p>` + table('cpvpick', [
     { h: '', v: b => `<input type="checkbox" class="cpvck" value="${esc(b.no)}">` }, { h: 'Bill entry no.', v: b => esc(b.no) },
