@@ -44,7 +44,17 @@
       : bill.audit === 'Hold' ? 'On hold' : bill.audit === 'Query' ? 'Query' : 'Awaiting audit';
   }
 
-  const api = { approvalFor, docTypeFor, priceApprovalFor, needsVarianceApproval, cashPvEligible, advanceStatus, billPayStatus };
+  // Finding 9: a copy of the data for a backup file. Staff contact details (e-mail, phone and similar)
+  // are removed from each user record; the input is not changed.
+  const CONTACT_KEY = /email|phone|mobile|contact|address/i;
+  function stripStaffContacts(data) {
+    const out = JSON.parse(JSON.stringify(data));
+    (out.users || []).forEach(u => Object.keys(u).forEach(k => { if (CONTACT_KEY.test(k)) delete u[k]; }));
+    out.backupNote = 'Staff contact details are not included in this file.';
+    return out;
+  }
+
+  const api = { approvalFor, docTypeFor, priceApprovalFor, needsVarianceApproval, cashPvEligible, advanceStatus, billPayStatus, stripStaffContacts };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.KUNRules = api;
 })(typeof window !== 'undefined' ? window : globalThis);

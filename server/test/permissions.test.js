@@ -76,3 +76,43 @@ test('audit, notices, number log and locks are writable by any signed-in user', 
     assert.equal(canWrite({ role: null, collection, access: null }), true, collection);
   }
 });
+
+/* ---------- read rules (A2 follow-up) ---------- */
+const { canRead, READ_PAGES, ALWAYS_READ } = require('../src/permissions');
+
+test('read: the pages named in the read rules all exist in the rights table', () => {
+  for (const [coll, pages] of Object.entries(READ_PAGES)) {
+    for (const page of pages) assert.ok(page in DEFAULT_RIGHTS, `${coll} names unknown page "${page}"`);
+  }
+});
+
+test('read: every collection the app stores is either restricted by page or always readable', () => {
+  for (const coll of Object.keys(COLLECTION_PAGE)) {
+    const known = coll in READ_PAGES || ALWAYS_READ.has(coll) || coll.startsWith('cfg');
+    assert.ok(known, `${coll} has no read rule`);
+  }
+});
+
+test('read: HK Supervisor may not read bills, but may read items and users', () => {
+  assert.equal(canRead({ role: 'HK Supervisor', collection: 'm_bills', access: null }), false);
+  assert.equal(canRead({ role: 'HK Supervisor', collection: 'm_items', access: null }), true);
+  assert.equal(canRead({ role: 'HK Supervisor', collection: 'm_users', access: null }), true);
+  assert.equal(canRead({ role: 'HK Supervisor', collection: 'cfg/settings', access: null }), true);
+});
+
+test('read: GRN Officer may read GRNs and, through the PO Register view, bills', () => {
+  assert.equal(canRead({ role: 'GRN Officer', collection: 'm_grns', access: null }), true);
+  assert.equal(canRead({ role: 'GRN Officer', collection: 'm_bills', access: null }), true);
+});
+
+test('read: a role hidden from every page that uses a collection is refused', () => {
+  // HK Supervisor: Advances, Advance Print, PO Register, Bills, Payment Pack and Dashboard are all H
+  assert.equal(canRead({ role: 'HK Supervisor', collection: 'm_advances', access: null }), false);
+  // Accounts: PPM AMC is H, but the Dashboard (V) uses the same records
+  assert.equal(canRead({ role: 'Accounts', collection: 'm_ppm', access: null }), true);
+});
+
+test('read: accounts not linked to an in-app user are refused restricted collections', () => {
+  assert.equal(canRead({ role: null, collection: 'm_grns', access: null }), false);
+  assert.equal(canRead({ role: null, collection: 'm_items', access: null }), true);
+});

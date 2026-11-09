@@ -71,3 +71,25 @@ test('the page uses the module, not its own copy of the rules', () => {
   }
   assert.doesNotMatch(html, /v <= num\(st\.masoolLimit\)/, 'old inline approval rule is gone');
 });
+
+test('backup: staff contact details are left out; the business records are kept', () => {
+  const data = {
+    users: [{ id: 'HOA', name: 'Head of Accounts', role: 'Admin', email: 'hoa@x.test', phone: '070000', contact: 'office', active: 'Y' }],
+    pos: [{ no: 'KBL/MH/PO/2026/0003', vendor: 'SAH Electricals' }],
+    settings: { poFrom: 500000 },
+  };
+  const out = R.stripStaffContacts(data);
+  assert.equal(out.users[0].email, undefined);
+  assert.equal(out.users[0].phone, undefined);
+  assert.equal(out.users[0].contact, undefined);
+  assert.equal(out.users[0].role, 'Admin', 'role and name are kept');
+  assert.equal(out.pos[0].vendor, 'SAH Electricals');
+  assert.equal(out.settings.poFrom, 500000);
+  assert.match(out.backupNote, /not included/);
+  assert.equal(data.users[0].email, 'hoa@x.test', 'the original data is not changed');
+});
+
+test('backup: the page writes the backup through the module', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
+  assert.match(html, /KUNRules\.stripStaffContacts\(S\)/);
+});

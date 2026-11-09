@@ -18,6 +18,11 @@ const DEFAULT_RIGHTS = {
   'Items': 'EVVHHHV',
   'Vendors': 'EVVHHHV',
   'MPL': 'EVVHHHV',
+  'PO Print': 'EEEEEHE',
+  'Advance Print': 'EEEEHHE',
+  'GRN Print': 'EEEEEHE',
+  'SRN Print': 'EEEEHHE',
+  'Payment Voucher': 'EEEEHHE',
   'PO Register': 'EVEEVHV',
   'PO Lines': 'EVVEVHV',
   'Advances': 'EVVEHHE',
@@ -73,6 +78,34 @@ const COLLECTION_PAGE = {
 const ANY_USER_COLLECTIONS = new Set(['m_audit', 'm_notifs', 'm_numlog']);
 const ANY_USER_PREFIXES = ['locks/'];
 
+// Read rules (A2 follow-up). A role may read a restricted collection only if it can see at least one
+// page that uses it (V or E). Restricted reads return an empty list, which the app treats as "nothing
+// to show". Always readable: the settings and lists every page needs, the user list (the app finds the
+// signed-in user there and shows names), the item master, rooms, and the audit, notice and number logs.
+const READ_PAGES = {
+  m_pos: ['PO Register', 'PO Lines', 'PO Print', 'Advances', 'GRN', 'SRN', 'Bills', 'Payment Pack', 'Consolidated PV', 'Dashboard', 'Issues'],
+  m_advances: ['Advances', 'Advance Print', 'PO Register', 'Bills', 'Payment Pack', 'Dashboard'],
+  m_grns: ['GRN', 'GRN Print', 'SRN', 'PO Register', 'PO Lines', 'Bills', 'Stores', 'Dashboard', 'Issues'],
+  m_srns: ['SRN', 'SRN Print', 'Bills', 'PO Register', 'Dashboard'],
+  m_bills: ['Bills', 'Payment Voucher', 'Payment Pack', 'Consolidated PV', 'Dashboard', 'PO Register'],
+  m_cpvs: ['Consolidated PV', 'Payment Pack', 'Dashboard'],
+  m_issues: ['Issues', 'Stores', 'Job Cards', 'Dashboard'],
+  m_jobs: ['Job Cards', 'PPM AMC', 'Rooms', 'Dashboard'],
+  m_ppm: ['PPM AMC', 'Dashboard'],
+  m_laundry: ['Laundry Log', 'Linen Par', 'Dashboard'],
+  m_vendors: ['Vendors', 'PO Register', 'PO Lines', 'Advances', 'Bills', 'MPL', 'Consolidated PV', 'Dashboard', 'Items'],
+};
+const ALWAYS_READ = new Set(['m_users', 'm_items', 'm_rooms', 'm_audit', 'm_notifs', 'm_numlog']);
+
+function canRead({ role, collection, access }) {
+  if (collection.startsWith('cfg') || collection.startsWith('locks/') || ALWAYS_READ.has(collection)) return true;
+  if (!role || !ROLES.includes(role)) return false;
+  if (role === 'Admin') return true;
+  const pages = READ_PAGES[collection];
+  if (!pages) return false;                                 // unknown collection: refuse
+  return pages.some(page => rightFor(page, role, access) !== 'H');
+}
+
 function defaultRight(page, role) {
   const i = ROLES.indexOf(role);
   const rights = DEFAULT_RIGHTS[page];
@@ -100,4 +133,4 @@ function canWrite({ role, collection, access }) {
   return rightFor(page, role, access) === 'E';
 }
 
-module.exports = { ROLES, DEFAULT_RIGHTS, COLLECTION_PAGE, canWrite, rightFor, defaultRight };
+module.exports = { ROLES, DEFAULT_RIGHTS, COLLECTION_PAGE, READ_PAGES, ALWAYS_READ, canWrite, canRead, rightFor, defaultRight };

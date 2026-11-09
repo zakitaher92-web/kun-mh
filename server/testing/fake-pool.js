@@ -3,12 +3,15 @@
 // so the route tests can run without PostgreSQL. Unknown statements throw, so a new query is never
 // silently ignored by a test.
 const crypto = require('crypto');
+const { EventEmitter } = require('events');
 
 function createFakePool(seed = {}) {
+  const notifier = new EventEmitter();   // stands in for the LISTEN connection (finding 4)
   const state = {
     accounts: (seed.accounts || []).map(a => ({ active: true, last_login: null, ...a })),
     sessions: [],
     kv: new Map(),                       // "coll|id" -> data
+    notifications: [],                   // every pg_notify sent, in order
   };
   for (const [key, data] of Object.entries(seed.kv || {})) state.kv.set(key, JSON.parse(JSON.stringify(data)));
 
@@ -19,6 +22,12 @@ function createFakePool(seed = {}) {
     const q = sql.replace(/\s+/g, ' ').trim();
     let m;
     if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(q)) return { rows: [], rowCount: 0 };
+    if (q === 'SELECT pg_notify($1, $2)') {
+      const note = { channel: params[0], payload: params[1] };
+      state.notifications.push(note);
+      notifier.emit('notification', note);
+      return { rows: [], rowCount: 0 };
+    }
     if (/^DELETE FROM sessions WHERE expires_at/.test(q)) return { rows: [], rowCount: 0 };
 
     // log-in and sessions
@@ -109,6 +118,7 @@ function createFakePool(seed = {}) {
 
   const pool = {
     state,
+    notifier,
     query: async (sql, params) => run(sql, params),
     connect: async () => ({
       query: async (sql, params) => run(sql, params),

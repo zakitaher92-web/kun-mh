@@ -15,12 +15,14 @@ function seedPool(extra = {}) {
       { id: 'a-adm', email: 'admin@example.test', name: 'Head of Accounts', password_hash: hash(PASSWORD) },
       { id: 'a-none', email: 'nobody@example.test', name: 'Not linked', password_hash: hash(PASSWORD) },
       { id: 'a-off', email: 'off@example.test', name: 'Inactive', password_hash: hash(PASSWORD), active: false },
+      { id: 'a-hk', email: 'hk@example.test', name: 'HK Supervisor', password_hash: hash(PASSWORD) },
     ],
     kv: {
       'm_users|all': {
         rows: {
           GRN1: { o: 0, r: { id: 'GRN1', name: 'GRN Officer', role: 'GRN Officer', cid: 'a-grn', active: true } },
           ADM: { o: 1, r: { id: 'ADM', name: 'Head of Accounts', role: 'Admin', cid: 'a-adm', active: true } },
+          HK: { o: 2, r: { id: 'HK', name: 'HK Supervisor', role: 'HK Supervisor', cid: 'a-hk', active: true } },
         },
       },
       'm_items|c00': { rows: { ITM1: { o: 0, r: { code: 'ITM1', name: 'Soap' } } } },
@@ -254,4 +256,99 @@ test('without devUser the production rule holds: no session means 401', async ()
   await withServer(seedPool(), async ({ base }) => {
     assert.equal((await call(base, 'GET', '/api/me')).status, 401);
   });
+});
+
+/* ---------- reads (A2 follow-up) ---------- */
+
+test('a role that cannot see the Bills pages gets no bills (empty list, not an error)', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    const { cookie } = await login(base, 'hk@example.test');
+    const list = await call(base, 'GET', '/api/docs/m_bills', { cookie });
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.json.docs, []);
+    const one = await call(base, 'GET', '/api/docs/m_bills/KBL-BILL-1', { cookie });
+    assert.equal(one.json.exists, false);
+  });
+});
+
+test('a role that can see a page gets its collection', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    const { cookie } = await login(base, 'grn@example.test');
+    const grns = await call(base, 'GET', '/api/docs/m_grns', { cookie });
+    assert.equal(grns.json.docs.length, 1);
+    const adm = await login(base, 'admin@example.test');
+    const bills = await call(base, 'GET', '/api/docs/m_bills', { cookie: adm.cookie });
+    assert.equal(bills.json.docs.length, 1);
+  });
+});
+
+test('items, settings, users and the logs are readable by any signed-in user', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    const { cookie } = await login(base, 'hk@example.test');
+    assert.equal((await call(base, 'GET', '/api/docs/m_items', { cookie })).json.docs.length, 1);
+    assert.equal((await call(base, 'GET', '/api/docs/m_users', { cookie })).json.docs.length, 1);
+    assert.equal((await call(base, 'GET', '/api/docs/cfg', { cookie })).status, 200);
+    assert.equal((await call(base, 'GET', '/api/docs/m_audit', { cookie })).status, 200);
+  });
+});
+
+test('an account not linked to an in-app user reads no restricted records', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    const { cookie } = await login(base, 'nobody@example.test');
+    assert.deepEqual((await call(base, 'GET', '/api/docs/m_grns', { cookie })).json.docs, []);
+    assert.equal((await call(base, 'GET', '/api/docs/m_items', { cookie })).json.docs.length, 1);
+  });
+});
+
+test('a saved access matrix opens a page-based collection to the role', async () => {
+  const pool = seedPool({ kv: { 'cfg|access': { v: { Bills: { 'HK Supervisor': 'V' } } } } });
+  await withServer(pool, async ({ base }) => {
+    const { cookie } = await login(base, 'hk@example.test');
+    const r = await call(base, 'GET', '/api/docs/m_bills', { cookie });
+    assert.equal(r.json.docs.length, 1);
+  });
+});
+
+test('an unknown collection cannot be read by a non-Admin', async () => {
+  await withServer(seedPool({ kv: { 'm_secret|x': { hidden: true } } }), async ({ base }) => {
+    const { cookie } = await login(base, 'grn@example.test');
+    assert.deepEqual((await call(base, 'GET', '/api/docs/m_secret', { cookie })).json.docs, []);
+  });
+});
+
+/* ---------- live updates (finding 4) ---------- */
+
+test('a write sends a NOTIFY on the change channel with the collection name', async () => {
+  const pool = seedPool();
+  await withServer(pool, async ({ base }) => {
+    const { cookie } = await login(base, 'grn@example.test');
+    const r = await call(base, 'PUT', '/api/docs/m_grns/KBL-GRN-7', { cookie, body: { data: { no: 'KBL-GRN-7' } } });
+    assert.equal(r.status, 200);
+    const note = pool.state.notifications.find(n => n.payload === 'm_grns');
+    assert.ok(note, 'a notice was sent');
+    assert.equal(note.channel, 'kun_mh_changes');
+  }, { notifier: pool.notifier });
+});
+
+test('a change announced by another server process reaches this process\'s browsers', async () => {
+  const pool = seedPool();
+  await withServer(pool, async ({ base }) => {
+    const { cookie } = await login(base, 'grn@example.test');
+    const res = await fetch(base + '/api/events', { headers: { Cookie: cookie } });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    const pump = (async () => {
+      while (!text.includes('"coll":"m_items"')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value);
+      }
+    })();
+    // what another process's NOTIFY looks like when it reaches this process's listener
+    pool.notifier.emit('notification', { channel: 'kun_mh_changes', payload: 'm_items' });
+    await Promise.race([pump, new Promise((_, rej) => setTimeout(() => rej(new Error('no event')), 3000))]);
+    assert.match(text, /event: change\ndata: \{"coll":"m_items"\}/);
+    await reader.cancel();
+  }, { notifier: pool.notifier });
 });

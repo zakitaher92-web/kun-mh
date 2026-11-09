@@ -12,7 +12,7 @@ Status words: **Done** (in the code and tested) · **Done (verified in browser)*
 | ID | Gap | Status | Where / note |
 |---|---|---|---|
 | A1 | Four people hold the Admin role | **Operator** | Script ready and tested: `npm run roles:fix-1.9 -- --dry-run`, then apply. Not applied: the live database rejected the stored password, and it needs sign-off |
-| A2 | Access enforced only in the browser | **Done for writes** | `server/src/permissions.js`, checked in `server/src/app.js`. Reads stay open (see Limits) |
+| A2 | Access enforced only in the browser | **Done (writes and reads)** | `server/src/permissions.js`, checked in `server/src/app.js`. Reads: a restricted collection comes back empty for a role that cannot see any page using it (checked in the browser as the HK Supervisor: no bills shown, no errors). Always readable: settings and lists, the user list, the item master, rooms and the logs (see Limits) |
 | A3 | Reset and restore are destructive | **Done (typed word + count)**; named-person rule **Decision** | `typedConfirm` in `index.html`: type RESET / RESTORE; shows the record count. Still Admin-only |
 | A4 | No sign-in lock-out | **Partly** | 3 wrong passwords = 30 s pause, per email (already there). Per-address limit **not added**: behind IIS every request comes from 127.0.0.1, so it would lock everyone out. Lock-out is in memory, so it resets on restart |
 | A5 | Session cookie not Secure | **Done (switch on with HTTPS)** | `COOKIE_SECURE=true` adds `Secure`. Turn on once IIS serves HTTPS |
@@ -74,21 +74,21 @@ Status words: **Done** (in the code and tested) · **Done (verified in browser)*
 
 | # | Finding | Status | Note |
 |---|---|---|---|
-| 1 | Access enforced only in browser (High) | **Done for writes** | See A2 |
+| 1 | Access enforced only in browser (High) | **Done (writes and reads)** | See A2 |
 | 2 | No sign-in lock-out or rate limit (Medium) | **Partly** | See A4 |
 | 3 | Session cookie not Secure (Medium) | **Done (switch on with HTTPS)** | See A5 |
-| 4 | Live updates work only with one server process (Medium) | **Not done** | Keep one process, as installed. Moving to PostgreSQL LISTEN/NOTIFY not started |
+| 4 | Live updates work only with one server process (Medium) | **Done (code and unit tests)** | Each change is sent as a PostgreSQL NOTIFY on `kun_mh_changes`. Every process LISTENs (`server.js`, reconnects if dropped) and passes it to its own browsers. Tested: a notice from another process reaches the browser stream. **Not yet run on two live processes**: needs a working database |
 | 5 | No e-mail notices (Low) | **Decision** | See F5 |
 | 6 | Reset and restore destructive (Medium) | **Partly** | Typed confirmation and count added. Admin-only; the named person is a **Decision** |
 | 7 | Access rights and users from the master import (Medium) | **Operator** | Review the Access page after each import (A1, D15) |
 | 8 | In-app user list and server accounts are separate (Medium) | **Operator** | Keep both lists in step (A7) |
-| 9 | Backups contain all business data and staff details (Medium) | **Not done** | Downloads copy: password hashes removed from exports. The app's own backup is unchanged. Store backups on a restricted share (operator) |
+| 9 | Backups contain all business data and staff details (Medium) | **Done** | The backup keeps the business records and leaves out staff e-mail, phone and similar fields (`KUNRules.stripStaffContacts`, tested). Only the Admin can open the Data page, and each download is audited. Store backup files on a restricted share (operator) |
 | 10 | No automated tests (Medium) | **Partly** | See F8 |
 | 11 | Install guide shows PostgreSQL 16 paths; hosted uses 18 (Low) | **Not done** | Needs the hosted version checked first, then both paths shown in the guide |
-| 12 | Mobile layout not verified (Low) | **Not done** | Needs a phone or device emulation; not available here |
+| 12 | Mobile layout not verified (Low) | **Done (checked at 390 px, all 29 pages)** | Headless Chromium at 390 px (`server/testing/phone-check.py`): no page scrolls sideways. Import page fixed (two-column layout, wrapping buttons and tags). Wide tables scroll inside their own box, by design |
 | §13 | Access rights on the hosted server after import | **Operator** | See A1, D15 |
 | §13 | Reset and restore behaviour per role | **Partly** | Reset and restore are Admin-only in the code; not tested per role |
-| §13 | Mobile and touch | **Not done** | See finding 12 |
+| §13 | Mobile and touch | **Partly** | Layout checked at 390 px (finding 12). Touch behaviour (taps, long lists) not tested on a device |
 | §13 | Bill tolerance (1.9) on real bills | **Operator** | Test with real bills |
 | §13 | Sign-in with each person's account on the hosted server | **Operator** | After A7 |
 
@@ -104,7 +104,7 @@ Status words: **Done** (in the code and tested) · **Done (verified in browser)*
 
 ## Limits
 
-- **Reads are open to any signed-in user.** The app loads its full working set into the browser on start. Restricting reads needs the app to load only what each page needs.
+- **Reads are restricted by page, with exceptions.** Always readable: the settings and lists (the app needs the thresholds in the browser), the user list (names and the signed-in user's link), the item master, rooms, and the audit, notice and number logs. A role that can see any page using a collection can read it; for example the GRN Officer can read bills, because the PO Register shows the billed amount.
 - **Local test server** (`server/testing/dev-server.js`): in-memory database and a log-in bypass (`devUser`) for trying screens as Admin. Never the live system. The production entry point never sets the bypass.
 - **Live PostgreSQL** (port 5433) rejected the stored password during this work, so no live database step was run.
 - **Training data** created during the chain test (vendor V-0001 approved with a placeholder bank value, an approval password, a budget of 20,000,000 for MT, PO 0003 and its GRN and bill) exists only in the in-memory test server. Nothing was written to the live system.

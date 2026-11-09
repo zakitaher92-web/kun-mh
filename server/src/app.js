@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { canWrite } = require('./permissions');
+const { canWrite, canRead } = require('./permissions');
 
 const APP_DIR = path.join(__dirname, '..', '..');          // the kun-mh folder (index.html)
 const CLIENT_DIR = path.join(__dirname, '..', 'client');   // server-adapter.js
@@ -213,9 +213,15 @@ function createApp(pool, options = {}) {
 
   /* ---------- documents (the app's database) ---------- */
   // Reads: any signed-in user (the app loads its working set on start).
+  // Reads (A2 follow-up): a collection the role may not see comes back empty, as if it had no records.
+  async function readAllowed(user, coll) {
+    return canRead({ role: await roleOf(user.id), collection: coll, access: await accessMatrix() });
+  }
+
   app.get('/api/docs/:coll', requireUser, async (req, res, next) => {
     try {
       checkColl(req.params.coll);
+      if (!(await readAllowed(req.user, req.params.coll))) return res.json({ docs: [] });
       const { rows } = await pool.query('SELECT id, data FROM kv_docs WHERE coll = $1 ORDER BY id', [req.params.coll]);
       res.json({ docs: rows });
     } catch (e) { next(e); }
@@ -224,6 +230,7 @@ function createApp(pool, options = {}) {
   app.get('/api/docs/:coll/:id', requireUser, async (req, res, next) => {
     try {
       checkColl(req.params.coll); checkId(req.params.id);
+      if (!(await readAllowed(req.user, req.params.coll))) return res.json({ exists: false });
       const { rows } = await pool.query('SELECT data FROM kv_docs WHERE coll = $1 AND id = $2', [req.params.coll, req.params.id]);
       res.json(rows.length ? { exists: true, data: rows[0].data } : { exists: false });
     } catch (e) { next(e); }
@@ -300,9 +307,21 @@ function createApp(pool, options = {}) {
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
     req.on('close', () => { clearInterval(ping); streams.delete(res); });
   });
-  function broadcast(coll) {
+  // Finding 4: every change is sent to the database as a NOTIFY on one channel. Each server process
+  // listens on that channel (see server.js) and passes the change to its own browsers, so a change
+  // made through one process reaches users connected to any process. Without a listener (tests, or
+  // a single process started without one) the change goes straight to this process's browsers.
+  const CHANNEL = 'kun_mh_changes';
+  function onChange(coll) {
     const message = `event: change\ndata: ${JSON.stringify({ coll })}\n\n`;
     for (const res of streams) res.write(message);
+  }
+  if (options.notifier) {
+    options.notifier.on('notification', msg => { if (msg && msg.channel === CHANNEL) onChange(msg.payload); });
+  }
+  function broadcast(coll) {
+    if (!options.notifier) return onChange(coll);
+    pool.query('SELECT pg_notify($1, $2)', [CHANNEL, coll]).catch(() => onChange(coll));
   }
 
   /* ---------- the web page ---------- */
@@ -331,7 +350,7 @@ function createApp(pool, options = {}) {
     res.status(503).json({ code: 'unavailable', error: 'Server error - see the server console' });
   });
 
-  return { app, broadcast, streams, loginFails };
+  return { app, broadcast, onChange, streams, loginFails, CHANNEL };
 }
 
 module.exports = { createApp, deepMerge, isPlain };

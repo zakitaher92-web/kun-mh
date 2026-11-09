@@ -4,15 +4,19 @@ const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
-function createPool() {
-  const pool = new Pool({
+// Connection settings from server/.env (shared by the pool and the live-update listener).
+function connectionConfig() {
+  return {
     host: process.env.DB_HOST || '127.0.0.1',
     port: Number(process.env.DB_PORT || 5433),
     user: process.env.DB_USER || 'kunmh',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'kun_mh',
-    max: 10,
-  });
+  };
+}
+
+function createPool() {
+  const pool = new Pool({ ...connectionConfig(), max: 10 });
   // an idle connection that drops must not stop the server
   pool.on('error', e => console.error('Database connection problem:', e.message));
   return pool;
@@ -24,4 +28,4 @@ async function applySchema(pool) {
   await pool.query(sql);
 }
 
-module.exports = { createPool, applySchema };
+module.exports = { createPool, applySchema, connectionConfig };
