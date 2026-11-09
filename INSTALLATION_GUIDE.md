@@ -110,7 +110,8 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 | Check the app's log | Open `kun-mh\logs\server.log` in Notepad. The newest lines are at the bottom. |
 | Start or stop the KUN MH database | **services.msc** > **postgresql-kun-16** (not the Billing service **postgresql-x64-16**) |
 | Back up | Double-click `setup\8-backup.bat` (weekly). The backup is saved in `C:\KUN\backups` |
-| Restore a backup | In the app: **Admin > Data > Restore from backup** |
+| Restore a backup | In the app: **Admin > Data > Restore from backup**. Type `RESTORE` to confirm; the dialog shows how many records it replaces |
+| Reset to example data | In the app: **Admin > Data > Reset to example data**. Type `RESET` to confirm; the dialog shows how many records it replaces. Do not use on the live system |
 | Add a person | Double-click `setup\5-create-admin.bat` |
 | Change a password or block a leaver | In a Command Prompt in the `server` folder: `npm run user -- password EMAIL "NEW-PASSWORD"` or `npm run user -- disable EMAIL` |
 | Change who may open the app, or the ports | Re-run `setup\7-setup-iis.bat` and answer the questions again |
@@ -184,6 +185,10 @@ If you use a self-signed certificate, each browser shows a warning until the cer
 | *Wrong email or password* in the app | Check the spelling. An administrator can reset the password with the command in Part 3 |
 
 | `psql.exe was not found` (Part 7, step 4) | Install PostgreSQL 16 with the Command Line Tools (Part 1b), then run Part 7, step 4 again |
+| *Your role may not change this page* (a save is refused) | The person's role cannot edit that page. Check **Admin > Access rights**; the Head of Accounts can change it (Part 9) |
+| A page shows no records, or *Nothing here yet* where records are expected | The role cannot see the pages that use those records (Part 9). Check **Admin > Access rights** |
+| `Live-update connection lost, reconnecting` in `logs\server.log` | The app keeps retrying the database connection by itself. If it stays, check that PostgreSQL is running (service `postgresql-kun-16`) and restart the app |
+| `Type RESET exactly to confirm` / `Type RESTORE exactly to confirm` | The confirmation word was not typed exactly (capitals). Nothing was reset or restored |
 | `The app is in a user profile folder` (step 7) | IIS cannot read the app there. Move the folder to `C:\KUN\kun-mh` (Part 7, step 1c), then run `6-start-app.bat` and `7-setup-iis.bat` from the new folder |
 | Settings show blank job targets, or the job-card priority list still shows *Urgent* | The data upgrade has not run. Run Part 7, step 4 |
 | `Could not connect to the database` during the data upgrade | Check that the service `postgresql-kun-16` is running and that the `kunmh` password is right |
@@ -357,6 +362,66 @@ No data needs converting. The new access rights default to the existing page rig
 
 ---
 
+## Part 9 - Apply the version 1.9.2 changes (access, live updates, backups)
+
+Use this part on an installation that already runs version 1.9 with the Part 8 changes. It applies to the local server and to a copy of the same version. The database layout does not change and no packages are added. A restart is needed, and the access rules take effect as soon as the new files run.
+
+**What changes**
+
+| Area | Change | Who notices |
+|---|---|---|
+| Access, reads (`server\src\permissions.js`, `server\src\app.js`) | A person now sees only the records of the pages their role can see (Admin > Access rights). Records of pages the role cannot see come back empty. Items, settings and lists, the user list, rooms and the logs stay visible to everyone | Every user. Check the roles before the update (below) |
+| Access, writes | A save to a page the role cannot edit is refused with *Your role may not change this page* | Every user who edits records |
+| Live updates (`server\src\server.js`) | Changes are sent through the database (PostgreSQL `LISTEN`/`NOTIFY`). Several copies of the server can run, and every copy passes on the changes it hears | Nobody (no change in use) |
+| Backups (**Admin > Data**) | The backup file keeps the business records and leaves out staff e-mail and phone numbers. Each backup is recorded in the audit log | Admin |
+| Restore and reset (**Admin > Data**) | Type `RESTORE` or `RESET` to confirm. The dialog shows how many records it replaces | Admin |
+| Phone and tablet screens | The Import page fits a 390-pixel screen; long button labels and status tags wrap | Users on phones |
+| Calculation rules (`rules.js`) | Approval limits, bill tolerance, cash PV limit and advance status are kept in one file, checked by automatic tests | Nobody (same results) |
+| Testing (`server\testing\`, `npm test`) | Automatic tests and a local test server. The test server is for trying screens only and must not be run on the live server | Developers only |
+
+**Before you start**
+
+- **Check the roles.** Users who must see a page need a role that can see it. In **Admin > Access rights**, check every role against the pages it uses. The Head of Accounts must agree the table before users are told about the change.
+- Make a backup from the last update, or make one now: run `setup\8-backup.bat`.
+- Tell users to save their work and log out.
+
+**Steps**
+
+1. **Stop the app.** Double-click `setup\stop-app.bat`.
+2. **Back up.** Run `setup\8-backup.bat` and check that the new file in `C:\KUN\backups` is not empty.
+3. **Copy the new files.** Use the same command as Part 8, step 2, with the new package folder:
+   ```bat
+   robocopy "NEW-PACKAGE\kun-mh" "C:\KUN\kun-mh" /E /XF .env /XD node_modules logs iis
+   ```
+   Robocopy exit codes 0 to 7 mean success. The new files are `rules.js`, `server\src\permissions.js` and the folder `server\testing`.
+4. **Check the packages.** Nothing new is installed. The only change to `server\package.json` is a `test` script. No `npm install` is needed.
+5. **Turn on the secure cookie (once HTTPS works).** Only after HTTPS through IIS works (Part 5), open `server\.env` in Notepad and add the line `COOKIE_SECURE=true`. Save the file. Without HTTPS, leave it out, or users cannot sign in. Never share this file. Note that step 4 (`4-configure.bat`) writes `server\.env` again and keeps the old copy as `server\.env.bak`; if you run it later, add the line `COOKIE_SECURE=true` again.
+6. **Start the app.** Double-click `setup\6-start-app.bat`. Check that `logs\server.log` ends with `KUN MH server running`, and that it does not show `Live-update connection failed`.
+7. **Check the screens.** Sign in as the Head of Accounts from another computer and check:
+   - **Admin > Data**: *Restore from backup* asks for `RESTORE`; *Reset to example data* asks for `RESET`, and both show a record count;
+   - a backup file (open it in Notepad and search for `email`): no staff e-mail addresses are in it, and near the end of the file there is a line `"backupNote"` saying that staff contact details are not included;
+   - **Admin > Access rights**: the page rights table shows the roles as agreed.
+   Then sign in as a user of each main role (GRN Officer, Maintenance Masool, Accounts) and check that their own pages show their records, and that a page they cannot edit refuses a save with the message above.
+8. **Check the phone layout (optional).** On a phone, open the Import page and one register. Nothing should scroll sideways; wide tables scroll inside their own box.
+
+**Rollback** (if the new version does not work)
+
+1. Stop the app (`setup\stop-app.bat`).
+2. Copy the files back from the backup folder (`C:\KUN\kun-mh-before-1.9.2`, or the folder you copied before this update), using the same `robocopy` command with the two folders swapped and without `/XF .env`. Remove `COOKIE_SECURE=true` from `server\.env` when it is rolled back.
+3. Start the app (`setup\6-start-app.bat`).
+
+**Local server checklist (1.9.2)**
+
+- [ ] Backup made (`setup\8-backup.bat`)
+- [ ] Access rights checked by the Head of Accounts for every role in use
+- [ ] Users told to save and log out
+- [ ] App stopped, new files copied with `robocopy`, `server\.env` kept
+- [ ] App started, and `logs\server.log` shows the server running
+- [ ] Screens checked (step 7), including a backup file with no staff e-mail
+- [ ] `COOKIE_SECURE=true` set, only if HTTPS works (step 5)
+
+---
+
 ## Security checklist
 
 - [ ] Only IIS (ports 8080 and 8443) is reachable from the network. Ports 3100 and 5433 are closed to the network (`check-access.bat` confirms).
@@ -365,7 +430,9 @@ No data needs converting. The new access rights default to the existing page rig
 - [ ] The KUN MH database (port 5433, service `postgresql-kun-16`) is separate from the Billing database (port 5432). Its passwords are not shared with the Billing app.
 - [ ] `server\.env` is not shared, emailed or copied. It contains the database password.
 - [ ] Each person has their own account, and leavers are disabled promptly.
-- [ ] Backups are made weekly and kept on another drive or server.
+- [ ] Backups are made weekly and kept on another drive or server. Backup files hold the business records (not staff e-mail or phone numbers), but they are still private: keep them on a restricted share.
+- [ ] Access rights (**Admin > Access rights**) are reviewed by the Head of Accounts whenever a role changes, because they decide what each person can see and edit (Part 9).
+- [ ] `COOKIE_SECURE=true` is set in `server\.env` once HTTPS works (Part 9, step 5).
 - [ ] The server is patched by IT, and the folders `kun-mh\logs` and `C:\KUN\backups` are not shared.
 
 ---
