@@ -8,6 +8,7 @@
     "node": ">=22.9.0"
   },
   "scripts": {
+    "test": "node --test",
     "start": "node --env-file-if-exists=.env src/server.js",
     "user": "node --env-file-if-exists=.env src/manage.js",
     "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
