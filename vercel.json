@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30,
+      "includeFiles": "{index.html,rules.js,server/client/**,server/schema.sql}"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+}

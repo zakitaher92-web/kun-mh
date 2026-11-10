@@ -34,7 +34,9 @@ async function main() {
   const pool = createPool();
   await applySchema(pool);
   const notifier = new EventEmitter();
-  await startListener(notifier);
+  // LIVE_UPDATES=off on serverless hosts (Vercel): a LISTEN connection cannot stay open there.
+  if (process.env.LIVE_UPDATES !== 'off') await startListener(notifier);
+  else console.log('Live updates are off (LIVE_UPDATES=off)');
   const { app } = createApp(pool, { notifier });
   const expire = () => pool.query('DELETE FROM sessions WHERE expires_at <= now()').catch(() => { });
   await expire();
