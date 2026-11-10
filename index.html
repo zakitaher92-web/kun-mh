@@ -1028,19 +1028,38 @@ function view(id, title, module, group, fmtNo, render) { VIEWS[id] = { id, title
 
 // Navigation is kept in page state (the artifact viewer passes only a plain #token from the link, used for the first view).
 function go(id) { closeModal(); route(id); }
+// Page history for the Back button and the Escape key.
+let HIST = [], NAV_BACK = false;
 function route(want) {
   if (!U) return SHARED ? renderGate() : renderLogin();
   let id = want || VIEW || (location.hash.match(/^#\/?(\w+)$/) || [])[1];
   if (!id || !VIEWS[id] || !canSee(VIEWS[id].module)) id = homeView();
+  if (VIEW && id !== VIEW && !NAV_BACK) { HIST.push(VIEW); if (HIST.length > 50) HIST.shift(); }
+  NAV_BACK = false;
   VIEW = id; render();
 }
+ACT.back = () => {
+  closeModal();
+  const prev = HIST.pop();
+  if (!prev) return;
+  NAV_BACK = true; route(prev);
+};
+// The exception lines that need action, with the page each one opens.
+ACT.exceptionList = () => {
+  const lines = exceptions().filter(e => e.n > 0);
+  if (!lines.length) return toast('No exception needs action.', 'ok');
+  modal('Exception lines to act on (' + lines.length + ')',
+    '<p class="muted">Each line should be zero. Open the page, act or record the reason.</p>' +
+    '<table class="ex">' + lines.map(e => '<tr><td class="n">' + e.i + '</td><td>' + esc(e.t) + '<small>' + esc(e.w) + '</small></td><td class="n"><span class="flag bad">' + e.n + '</span></td><td><button class="btn ghost sm" data-act="goto" data-id="' + e.v + '">Open</button></td></tr>').join('') + '</table>',
+    [{ l: 'Close', cls: '', fn: () => closeModal() }], { wide: true });
+};
 function homeView() { return ['dashboard', 'desk', 'po', 'grn', 'bills', 'issues', 'laundry', 'guide'].find(v => VIEWS[v] && canSee(VIEWS[v].module)) || 'guide'; }
 
 function render() {
   const v = VIEWS[VIEW];
   $('#app').innerHTML = shell();
   const main = $('#main');
-  try { main.innerHTML = `<div class="vhead"><div><span class="fmt">${esc(v.fmtNo)}</span><h1>${esc(v.title)}</h1></div><div class="vtools" id="vtools"></div></div>` + v.render(); }
+  try { main.innerHTML = `<div class="vhead"><div>${HIST.length ? '<button class="btn ghost sm" data-act="back" title="Back to the previous page (Esc)">&larr; Back</button> ' : ''}<span class="fmt">${esc(v.fmtNo)}</span><h1>${esc(v.title)}</h1></div><div class="vtools" id="vtools"></div></div>` + v.render(); }
   catch (e) { console.error(e); main.innerHTML = `<div class="card bad">Something went wrong showing this page: ${esc(e.message)}</div>`; }
   document.querySelectorAll('[data-autofocus]').forEach(x => x.focus());
   window.scrollTo(0, 0);
@@ -1302,7 +1321,13 @@ document.addEventListener('click', e => {
   a(el.dataset.id, el, e);
   if (el.closest('#nav')) $('#nav').classList.remove('open');
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('open')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('#modal').classList.contains('open')) return closeModal();
+  const t = document.activeElement && document.activeElement.tagName;
+  if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+  if (HIST.length) ACT.back();
+});
 // Shown when the page is opened as a file instead of through the local server (no database is used then).
 function renderNoServer() {
   document.getElementById('app').innerHTML = `<div class="login"><div class="lcard"><div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>Maintenance &amp; Housekeeping</h1>
@@ -1345,7 +1370,7 @@ view('dashboard', 'Dashboard & exceptions', 'Dashboard', 'Overview', 'MH-24', ()
   const tot = k => bt.reduce((a, r) => a + (r[k] || 0), 0);
   setTimeout(() => { const t = $('#vtools'); if (t) t.innerHTML = monthPicker(); });
   return `<div class="tiles">
-    ${tile('Exception lines to act on', nEx, 'of ' + ex.length + ' checks', nEx ? 'bad' : 'ok')}
+    <div class="tile ${nEx ? 'bad' : 'ok'}" data-act="exceptionList" title="Show the lines to act on"><span>Exception lines to act on</span><b>${nEx}</b><small>of ${ex.length} checks - click to see them</small></div>
     ${tile('Open job cards', openJobs.length, overdue + ' overdue', overdue ? 'bad' : '', 'desk')}
     ${tile('Bills awaiting audit', awaitB.length, fmt(awaitB.reduce((a, b) => a + num(b.amount), 0)) + ' IQD', awaitB.length ? 'warn' : '', 'audit')}
     ${tile('Cleared, awaiting payment', fmt(cleared.reduce((a, b) => a + C.bill[b.no].net, 0)), cleared.length + ' bill(s), IQD', '', 'audit')}
