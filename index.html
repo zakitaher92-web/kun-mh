@@ -1594,7 +1594,7 @@ ACT.editPPM = id => {
 };
 
 /* ===== Guide ===== */
-view('guide', 'How the process works', 'Guide', 'Overview', 'Guide', () => `
+view('guide', 'How the process works', 'Guide', 'Stores', 'Guide', () => `
   <section class="card"><h3>The flow</h3><ol class="flow">
   <li><b><span class="gl" style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="budget">Budget</span></b> by line, phased by month (MH-02). Lines with a zaereen-day basis (VAR) follow zaereen-days; other lines follow calendar days.</li>
   <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="items">Items, vendors and the MPL</span></b> (MH-03/04/05) are kept by the Head of Accounts. The MPL is approved with the password and locked.</li>
@@ -3097,13 +3097,13 @@ const IMPORTS = {
     can: () => canEdit('Vendors'), why: () => 'Needs entry rights on Vendors (MH-04).', list: () => S.vendors,
     cols: [
       { k: 'code', h: 'Vendor code', al: ['code'], note: 'Leave blank for a new vendor - the next V- number is given.' },
-      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'contractor', 'supplier', 'supplier name', 'company', 'company name', 'firm', 'firm name', 'party name'], note: 'Unique. Cannot change once used on a PO or bill.' },
+      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'vendor / contractor', 'vendor/contractor', 'vendor contractor', 'contractor', 'supplier', 'supplier name', 'company', 'company name', 'firm', 'firm name', 'party name'], note: 'Unique. Cannot change once used on a PO or bill.' },
       { k: 'type', h: 'Type', t: 'pick', o: () => S.lists.vendorTypes, al: ['vendor type', 'supplier type'] },
       { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category', 'items supplied', 'products', 'services', 'nature of business', 'scope'] },
       { k: 'contact', h: 'Contact person', al: ['contact', 'contact name', 'person'] },
       { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no', 'phone number', 'mobile no', 'mobile number', 'contact no', 'contact number', 'whatsapp'] },
-      { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Every vendor is approved when it is imported; the column is kept for information only.' },
-      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
+      { k: 'avl', h: 'On AVL (Y/N)', t: 'text', al: ['avl', 'on avl', 'on avl?', 'approved', 'ok'], note: 'Every vendor is approved when it is imported; any value here (for example OK or Y) is accepted.' },
+      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank (verified)', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
       { k: 'remarks', h: 'Remarks', al: ['notes', 'comments'] },
     ],
     need: u => u.has('code') || u.has('name') ? '' : 'A "Vendor code" or "Vendor / contractor name" column is needed.',
