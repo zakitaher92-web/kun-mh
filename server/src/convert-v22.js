@@ -79,12 +79,8 @@ function build(seed, accountId) {
   // the editable role list (version 2.2): the roles and the base role each special role acts as
   cfg('roles', { list: seed.cfg.roles, base: seed.cfg.roleBase || {} });
 
-  // ---- MPL: a rate on an item becomes a draft price-list row (as the server version holds rates)
-  const mplRows = [];
-  seed.items.forEach(i => {
-    if (i.mpl > 0) mplRows.push({ ex: false, item: i.code, vendor: i.pref || '', rate: i.mpl, from: g.stockDate, to: '2027-03-31', prev: null, basis: i.basis || '' });
-  });
-  cfg('mpl', { status: 'Draft', version: 0, validUntil: '2027-03-31', rows: mplRows });
+  // ---- MPL (version 2.2): each item carries its own rate (mpl proposed, appr approved); no separate rows
+  cfg('mpl', { status: 'Draft', version: 0, validUntil: '2027-03-31', rows: [] });
   cfg('counts', {}); cfg('linenCounts', {}); cfg('hkExplain', {});
   cfg('meta', { app: 'KUN-MH', version: '2.2', ownerUid: accountId, source: 'version 2.2 seed', created: new Date().toISOString() });
 
@@ -95,7 +91,7 @@ function build(seed, accountId) {
   };
   rowsOf('m_items', seed.items, 'code', i => ({ ex: false, code: i.code, name: i.name, cat: i.cat, unit: i.unit,
     reorder: null, opening: 0, par: null, norm: null, remarks: i.rem || '',
-    pref: i.pref || '', basis: i.basis || '', apprBy: i.apprBy || '', apprOn: i.apprOn || '', appr: i.appr || '' }));
+    pref: i.pref || '', basis: i.basis || '', mpl: i.mpl ?? null, appr: i.appr ?? null, prev: null, apprBy: i.apprBy || '', apprOn: i.apprOn || '' }));
   rowsOf('m_vendors', seed.vendors, 'code', v => ({ ex: false, code: v.code, name: v.name, type: v.type, supplies: v.supplies,
     contact: '', phone: '', avl: v.avl, bank: '', remarks: v.rem || '' }));
   rowsOf('m_users', seed.users, 'id', u => ({ id: u.id, cid: u.id === 'HOA' ? accountId : '', name: u.name, role: u.role,

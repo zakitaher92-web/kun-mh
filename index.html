@@ -603,8 +603,13 @@ const bline = code => S.budgetLines.find(b => b.code === code);
 const findPO = no => S.pos.find(p => p.no === no);
 const userName = () => U ? U.name : '';
 
+// Version 2.2: each item has one rate. mpl = proposed rate, appr = approved rate (with who and when).
+// The approved rates are read as the price list rows, so the price checks work as before.
+const itemRateStatus = i => (num(i.appr) > 0 && num(i.mpl) === num(i.appr)) ? 'Approved' : (num(i.mpl) > 0 && num(i.mpl) !== num(i.appr)) ? 'Pending approval' : (num(i.mpl) > 0 || num(i.appr) > 0) ? 'Approved' : 'No rate';
+const pendingRates = () => S.items.filter(i => num(i.mpl) > 0 && num(i.mpl) !== num(i.appr));
+const mplRows = () => S.items.filter(i => num(i.appr) > 0).map(i => ({ ex: false, item: i.code, vendor: i.pref || '', rate: num(i.appr), from: i.apprOn || '', to: S.mpl.validUntil, prev: i.prev ?? null, basis: i.basis || '', apprBy: i.apprBy || '' }));
 function mplRate(code, vend) {
-  const rows = S.mpl.rows.filter(r => r.item === code && num(r.rate) > 0);
+  const rows = mplRows().filter(r => r.item === code && num(r.rate) > 0);
   if (!rows.length) return null;
   const v = rows.find(r => r.vendor === vend);
   if (v) return { rate: num(v.rate), src: 'vendor', row: v };
@@ -950,9 +955,9 @@ function exceptions() {
   const mk = curMK();
   const openPO = S.pos.filter(p => !p.cancel && !p.closedOn);
   const hk = hkNorms(), ln = linenPar();
-  const mplExpired = S.mpl.rows.filter(r => r.to && r.to < reportDate()).length;
+  const mplExpired = mplRows().filter(r => r.to && r.to < reportDate()).length;
   const L = [
-    ['MPL not approved / locked, or rates expired', (S.mpl.status !== 'Approved' ? 1 : 0) + mplExpired, 'MPL - Head of Accounts to approve', 'mpl'],
+    ['Item rates waiting for approval, or rates expired', pendingRates().length + mplExpired, 'Items & MPL - Head of Accounts to approve the rates', 'mpl'],
     ['POs over budget (need budget revision before issue)', openPO.filter(p => C.po[p.no].budget === 'OVER BUDGET').length, 'PO Register - Internal Auditor / Sigat', 'po'],
     ['PO lines above MPL rate tolerance', openPO.reduce((a, p) => a + C.po[p.no].above, 0), 'PO lines - HoA / Sigat approval', 'po'],
     ['PO lines for items not on MPL', openPO.reduce((a, p) => a + C.po[p.no].notMpl, 0), 'PO lines - add rate to MPL', 'po'],
@@ -1370,7 +1375,7 @@ view('dashboard', 'Dashboard & exceptions', 'Dashboard', 'Overview', 'MH-24', ()
     ['Closing store stock value (IQD)', fmt(Object.values(C.stock).reduce((a, s) => a + s.value, 0))],
     ['Laundry pieces pending with laundry', fmt(linenPar().reduce((a, r) => a + r.pending, 0))],
     ['Job cards closed within target (month)', (() => { const d = S.jobs.filter(j => j.completed && mkey(j.completed) === curMK()); return d.length ? pct(d.filter(j => C.jobs[j.no].inTarget).length / d.length) : '-'; })()],
-    ['MPL status', flag(S.mpl.status === 'Approved' ? 'Approved v' + S.mpl.version : S.mpl.status)],
+    ['Item rates', flag(pendingRates().length ? pendingRates().length + ' waiting for approval' : 'All approved')],
   ])}</section>
   <section class="card"><h3>C. Exceptions - each line should be zero</h3>
   <table class="ex">${ex.map(e => `<tr data-act="goto" data-id="${e.v}" class="click"><td class="n">${e.i}</td><td>${esc(e.t)}<small>${esc(e.w)}</small></td><td class="n"><span class="flag ${e.n ? 'bad' : 'ok'}">${e.n}</span></td></tr>`).join('')}</table></section>
@@ -2185,7 +2190,7 @@ ACT.editLaundry = id => {
 };
 
 /* ===== MH-03 Items ===== */
-const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.mpl.rows.some(r => r.item === code);
+const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.items.some(i => i.code === code && (num(i.mpl) > 0 || num(i.appr) > 0));
 view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   const ed = canEdit('Items');
   tools((ed ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
@@ -2196,17 +2201,19 @@ view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   ], S.items, { click: 'editItem', key: i => i.code, name: 'Items' });
 });
 ACT.editItem = code => {
-  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '' } : item(code), ed = canEdit('Items'), used = !isNew && usedItem(code);
+  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '', mpl: null, appr: null, pref: '', basis: '' } : item(code), ed = canEdit('Items'), used = !isNew && usedItem(code);
   modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code and name cannot change. Add a new item instead.</p>' : '') + fields([
     { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: ed && !used, req: 1 },
     { k: 'cat', l: 'Category (fixes budget line and type)', t: 'sel', o: S.categories.map(c => [c.name, c.name + ' (' + c.line + ', ' + c.type + ')']), ed, req: 1 }, { k: 'unit', l: 'Unit', t: 'sel', o: S.lists.units, ed },
     { k: 'norm', l: 'HK norm per 100 zaereen-days', t: 'num', ed }, { k: 'par', l: 'Linen par per bed', t: 'num', ed }, { k: 'reorder', l: 'Re-order level', t: 'num', ed },
-    { k: 'opening', l: 'Opening stock at go-live (qty)', t: 'num', ed, hint: 'Physical count on ' + fdate(S.settings.stockOpenDate) }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], i),
+    { k: 'opening', l: 'Opening stock at go-live (qty)', t: 'num', ed, hint: 'Physical count on ' + fdate(S.settings.stockOpenDate) }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed },
+    { k: 'mpl', l: 'Proposed rate (MPL, IQD)', t: 'num', ed, hint: isNew ? 'Approved later on the Item rates page' : 'Approved rate: ' + (num(i.appr) ? fmt(i.appr) + ' by ' + esc(i.apprBy || '') + ' on ' + fdate(i.apprOn) : 'none yet') + ' - ' + itemRateStatus(i) },
+    { k: 'pref', l: 'Preferred vendor', t: 'sel', o: S.vendors.map(v => v.name), ed }, { k: 'basis', l: 'Rate basis (quotations / remarks)', t: 'text', full: true, ed }], i),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
       const o = Object.assign({}, i); readInto(b, o);
       if (!o.code || !o.name || !o.cat) return toast('Code, name and category are required.', 'bad');
       if (S.items.some(x => x !== i && (x.code === o.code || x.name.toLowerCase() === o.name.toLowerCase()))) return toast('Code and name must be unique.', 'bad');
-      Object.assign(i, o); i.opening = num(i.opening); if (isNew) S.items.push(i);
+      Object.assign(i, o); i.opening = num(i.opening); i.mpl = o.mpl === null || o.mpl === '' ? null : num(o.mpl); if (isNew) S.items.push(i);
       closeModal(); commit(isNew ? 'Item added' : 'Item updated', i.code); render();
     } }]);
 };
@@ -2245,38 +2252,31 @@ function mplCheck(r) {
   return 'OK';
 }
 let MPL_TOOLS_HTML = '';
-view('mpl', 'Master price list', 'MPL', 'Merged into Items', 'MH-05', (o = {}) => {
-  const m = S.mpl, ed = canEdit('MPL') && m.status !== 'Approved';
-  const mplTools = ((canEdit('MPL') ? (m.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : '<button class="btn pri" data-act="approveMPL">Approve MPL</button>') : '') + (ed ? '<button class="btn ghost" data-act="editMPL">+ Add rate</button>' : '') + impBtn('mpl'));
-  if (o.merged) MPL_TOOLS_HTML = mplTools; else tools(mplTools);
-  return `<div class="sum">Status ${flag(m.status === 'Approved' ? 'Approved' : m.status)} &middot; Version ${m.version} &middot; Prepared by ${esc(m.preparedBy)} ${fdate(m.preparedOn)} &middot; Approved by ${esc(m.approvedBy || '-')} ${fdt(m.approvedOn)} &middot; Valid until ${fdate(m.validUntil)}</div>
-  <p class="muted">Rates from quotations (normally three). Approved by the Head of Accounts with the approval password - the list is then LOCKED. To change a rate: Revise MPL (password + reason), edit, then approve again as a new version. Every PO line is checked against these rates (tolerance ${pct(S.settings.priceTol)}).</p>` + table('mpl', [
-    { h: 'Item code', v: r => esc(r.item) }, { h: 'Item / service', v: r => esc(itemName(r.item)) }, { h: 'Unit', v: r => esc((item(r.item) || {}).unit) }, { h: 'Vendor', v: r => esc(r.vendor) },
-    { h: 'Approved rate (IQD)', n: 1, v: r => `<b>${fmt(r.rate)}</b>` }, { h: 'Valid from', v: r => fdate(r.from) }, { h: 'Valid to', v: r => fdate(r.to) }, { h: 'Previous rate', n: 1, v: r => fmt(r.prev) },
-    { h: 'Change %', n: 1, v: r => num(r.prev) ? pct(num(r.rate) / num(r.prev) - 1, 1) : '' }, { h: 'Basis', v: r => esc(r.basis) }, { h: 'Check', v: r => flag(mplCheck(r)) },
-  ], S.mpl.rows, { click: ed ? 'editMPL' : '', key: r => S.mpl.rows.indexOf(r), name: 'MPL v' + m.version });
+view('mpl', 'Item rates (MPL)', 'MPL', 'Merged into Items', 'MH-05', (o = {}) => {
+  const ed = canEdit('Items') && may('Admin');
+  const tl = ed && pendingRates().length ? '<button class="btn pri" data-act="rates-approve">Approve item rates</button>' : '';
+  if (o.merged) MPL_TOOLS_HTML = tl; else tools(tl);
+  return '<p class="muted">Each item has one rate: the proposed rate (MPL) and the approved rate. A changed proposal waits for approval. Approve here, by name; the previous approved rate is kept. Change a proposed rate on the item (Items page).</p>' + table('mpl', [
+    { h: 'Item code', v: i => '<b>' + esc(i.code) + '</b>' }, { h: 'Item / service', v: i => esc(i.name) }, { h: 'Preferred vendor', v: i => esc(i.pref) },
+    { h: 'Proposed rate (IQD)', n: 1, v: i => fmt(i.mpl) }, { h: 'Approved rate (IQD)', n: 1, v: i => '<b>' + fmt(i.appr) + '</b>' }, { h: 'Previous rate', n: 1, v: i => fmt(i.prev) },
+    { h: 'Approved by', v: i => esc(i.apprBy) }, { h: 'Approved on', v: i => fdate(i.apprOn) }, { h: 'Status', v: i => flag(itemRateStatus(i)) }, { h: 'Basis', v: i => esc(i.basis) },
+  ], S.items.filter(i => num(i.mpl) > 0 || num(i.appr) > 0), { click: 'editItem', key: i => i.code, name: 'Item rates' });
 });
-ACT.editMPL = idx => {
-  const isNew = idx === undefined || idx === '', r = isNew ? { item: '', vendor: '', rate: null, from: isoDate(new Date()), to: S.mpl.validUntil, prev: null, basis: '' } : S.mpl.rows[+idx];
-  modal(isNew ? 'Add MPL rate' : 'MPL rate - ' + itemName(r.item), fields([
-    { k: 'item', l: 'Item', t: 'sel', o: itemOpts(), req: 1 }, { k: 'vendor', l: 'Vendor', t: 'sel', o: vendorOpts(), req: 1 }, { k: 'rate', l: 'Approved rate (IQD)', t: 'num', req: 1 },
-    { k: 'prev', l: 'Previous rate (IQD)', t: 'num' }, { k: 'from', l: 'Valid from', t: 'date' }, { k: 'to', l: 'Valid to', t: 'date' }, { k: 'basis', l: 'Basis (quotes compared / remarks)', t: 'text', full: true }], r),
-    [{ l: 'Save', cls: 'pri', fn: b => { readInto(b, r); if (!r.item || !r.vendor || !num(r.rate)) return toast('Item, vendor and rate are required.', 'bad'); if (isNew) S.mpl.rows.push(r); closeModal(); commit('MPL rate ' + (isNew ? 'added' : 'changed'), r.item + ' ' + r.vendor + ' ' + r.rate); render(); } },
-      !isNew && { l: 'Remove rate', cls: 'danger', fn: () => { S.mpl.rows.splice(+idx, 1); closeModal(); commit('MPL rate removed', r.item + ' ' + r.vendor); render(); } }]);
+ACT['rates-approve'] = () => {
+  const pend = pendingRates();
+  if (!pend.length) return toast('No item rate is waiting for approval.');
+  modal('Approve item rates', '<p class="muted">Tick the rates to approve. Each approved rate becomes the rate in use; the old approved rate is kept as the previous rate.</p><div class="fld"><label>Approved by (name)</label><input id="ra-who" value="' + esc(U.name) + '"></div>' +
+    table('ratepick', [
+      { h: '', v: i => '<input type="checkbox" class="ratesel" value="' + esc(i.code) + '" checked>' }, { h: 'Code', v: i => esc(i.code) }, { h: 'Item', v: i => esc(i.name) },
+      { h: 'Approved now', n: 1, v: i => fmt(i.appr) }, { h: 'Proposed', n: 1, v: i => fmt(i.mpl) },
+    ], pend, { name: 'Pending rates', noTools: true }),
+    [{ l: 'Approve selected rates', cls: 'pri', fn: () => {
+      const who = ($('#ra-who').value || '').trim(); if (!who) return toast('Give the approver name.', 'bad');
+      const sel = new Set([...document.querySelectorAll('input.ratesel:checked')].map(x => x.value)); if (!sel.size) return toast('Select at least one rate.', 'bad');
+      S.items.forEach(i => { if (sel.has(i.code) && num(i.mpl) > 0 && num(i.mpl) !== num(i.appr)) { if (num(i.appr) > 0) i.prev = num(i.appr); i.appr = num(i.mpl); i.apprBy = who; i.apprOn = isoDate(new Date()); } });
+      closeModal(); commit('Item rates approved', sel.size + ' rate(s) by ' + who); render(); toast(sel.size + ' item rate(s) approved.', 'ok');
+    } }], { wide: true });
 };
-ACT.approveMPL = () => {
-  const bad = S.mpl.rows.filter(r => mplCheck(r) !== 'OK');
-  if (bad.length) return toast(bad.length + ' row(s) are not OK - fix them before approval.', 'bad');
-  needPassword('Approve MPL', 'Approving stamps the version, date and approver and locks the list. No rate can then be changed without Revise MPL.',
-    `<div class="fld"><label>Approved by (name)</label><input id="apn" value="${esc(U.name)}"></div><div class="fld"><label>Valid until</label><input type="date" id="apv" value="${esc(S.mpl.validUntil)}"></div>`, () => {
-      S.mpl.status = 'Approved'; S.mpl.version++; S.mpl.approvedBy = $('#apn').value.trim() || U.name; S.mpl.approvedOn = nowDT(); S.mpl.validUntil = $('#apv').value || S.mpl.validUntil;
-      closeModal(); commit('MPL approved', 'Version ' + S.mpl.version + ' by ' + S.mpl.approvedBy); render(); toast('MPL version ' + S.mpl.version + ' approved and locked.', 'ok');
-    });
-};
-ACT.reviseMPL = () => needPassword('Revise MPL', 'The list unlocks for editing and shows "Under revision". Approve it again afterwards as a new version.', '<div class="fld full"><label>Reason for revision</label><input id="rvr"></div>', () => {
-  const r = $('#rvr').value.trim(); if (!r) return toast('Give the reason.', 'bad');
-  S.mpl.status = 'Under revision'; closeModal(); commit('MPL revision opened', r); render();
-});
 
 /* ===== MH-02 Budget ===== */
 view('budget', 'Budget - monthly phasing', 'Budget', 'Masters', 'MH-02', () => {
@@ -3097,9 +3097,10 @@ const IMPORTS = {
   mpl: {
     label: 'Master price list rates', fmt: 'MH-05', sheet: 'MPL', view: 'mpl', match: 'Item code + vendor',
     desc: 'Approved rate per item and vendor, with validity and basis. Your own price list can go in directly: vendors not yet on the vendor list and items not yet in the Items list are added from it.',
-    can: () => canEdit('MPL') && S.mpl.status !== 'Approved',
-    why: () => S.mpl.status === 'Approved' && canEdit('MPL') ? 'The MPL is approved and locked - click Revise MPL first, then import, then approve again.' : 'Needs entry rights on the MPL (MH-05).',
-    list: () => S.mpl.rows,
+    can: () => canEdit('Items'),
+    why: () => 'Needs entry rights on Items. Imported rates are proposed rates; the Head of Accounts approves them on the Item rates page.',
+    list: () => mplRows(),
+    apply: o => { const it = S.items.find(i => i.code === o.item); if (!it) return; if (num(o.rate) > 0) it.mpl = num(o.rate); if (o.vendor) it.pref = o.vendor; if (o.basis) it.basis = o.basis; },
     cols: [
       { k: 'item', h: 'Item code', al: ['code', 'item no', 'item number', 'item id'], note: 'A code from the Items list. Blank: the item is found by its name; a new item gets the next code of its category.' },
       { k: '_name', h: 'Item / service name', al: ['item', 'item name', 'name', 'description', 'item description', 'service', 'particulars', 'material'], get: o => itemName(o.item), note: 'Finds the item when there is no code; the name of a new item.' },
@@ -3141,7 +3142,7 @@ const IMPORTS = {
         }
       }
     },
-    find: r => r.item && r.vendor ? S.mpl.rows.find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
+    find: r => r.item && r.vendor ? mplRows().find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
     key: r => r.item && r.vendor ? r.item + ' | ' + r.vendor : '',
     check: (r, ex, ctx, E) => {
       if (r.rate !== undefined && r.rate <= 0) E.push('Rate must be above zero');
@@ -3352,7 +3353,7 @@ function impCard(kind, inModal) {
     ${ok ? `<div class="vtools"><button class="btn" data-act="impTpl" data-id="${kind}">Download Excel template</button>
       <label class="btn pri">Import Excel file<input type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onchange="App.importFile('${kind}', this)"></label>
       ${inModal ? '' : `<a href="#" data-act="goto" data-id="${sp.view}" class="small">Open the list</a>`}</div>`
-    : `<p class="small">${flag(sp.why())}</p>${kind === 'mpl' && canEdit('MPL') && S.mpl.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : ''}`}`;
+    : `<p class="small">${flag(sp.why())}</p>`}`;
 }
 view('import', 'Import master data from Excel', 'Items', 'Masters', 'Import', () => `
   <section class="card"><h3>How it works</h3><ol class="flow">
@@ -3453,8 +3454,8 @@ function impApply() {
     const ni = r.raw._newItem, nv = r.raw._newVendor;
     if (ni && !S.items.includes(ni)) { if (S.items.some(i => lc(i.code) === lc(ni.code) || lc(i.name) === lc(ni.name))) return; S.items.push(ni); if (!S.lists.units.includes(ni.unit)) S.lists.units.push(ni.unit); nI++; }
     if (nv && !S.vendors.includes(nv)) { if (S.vendors.some(v => lc(v.code) === lc(nv.code) || lc(v.name) === lc(nv.name))) return; S.vendors.push(nv); nV++; }
-    if (r.action === 'New') { const o = Object.assign(sp.blank(), clean(r.raw)); if (sp.fix) sp.fix(o); sp.list().push(o); nN++; }
-    else { Object.assign(r.ex, clean(r.raw)); if (sp.fix) sp.fix(r.ex); nU++; }
+    if (r.action === 'New') { const o = Object.assign(sp.blank(), clean(r.raw)); if (sp.fix) sp.fix(o); if (sp.apply) sp.apply(o); else sp.list().push(o); nN++; }
+    else { if (sp.apply) sp.apply(Object.assign({}, r.ex, clean(r.raw))); else { Object.assign(r.ex, clean(r.raw)); if (sp.fix) sp.fix(r.ex); } nU++; }
   });
   const extra = (nV ? ', ' + nV + ' vendor(s) added' : '') + (nI ? ', ' + nI + ' item(s) added' : '');
   if (kind === 'rooms' && IMP.replace) {

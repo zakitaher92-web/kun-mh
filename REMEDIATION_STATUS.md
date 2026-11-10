@@ -126,3 +126,12 @@ Status words: **Done** (in the code and tested) · **Done (verified in browser)*
 | 20-role limit | **Not done** | The server has a fixed role list. Needs a decision: a role table that the Access, Users and permission code read at run time |
 | Rooms | **Operator** | Version 2.2 has no room list; import the real one (Data page) |
 | Notice recipients (version 2.2 `notifyMap`) | **Not applied** | The server version has its own notice rules; needs a review of both lists |
+
+## Version 2.2: editable roles and item rates (applied)
+
+| Item | Status | Note |
+|---|---|---|
+| Editable role list (up to 20) | **Done (tested in the browser)** | Roles card on Access rights; stored as cfg/roles; the server checks roles against it |
+| Item rates per item (proposed and approved, by name) | **Done (tested in the browser)** | Each item has a proposed rate (mpl) and approved rate (appr); Approve item rates on the Items page (Admin); previous rate kept |
+| Several vendors per item (old price list) | **Removed (as version 2.2)** | One rate per item with a preferred vendor. The whole-list approval passphrase no longer applies to rates |
+| Notice recipients (notifyMap) | **Done** | Version 2.2 recipients |
