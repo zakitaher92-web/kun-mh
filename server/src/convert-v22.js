@@ -135,7 +135,7 @@ function build(seed, accountId) {
   chunked('audit', seed.audit, (a, i) => ({ k: String(a.t || '').replace(/\D/g, '').slice(0, 14) + '-' + String(i).padStart(4, '0'), t: a.t, user: a.user || '', action: a.action || '', details: a.details || '' }),
     r => sid(r.k));
   // notices: the e-mail addresses are not carried over; the notice is kept in the app only
-  chunked('notifs', seed.notifs, (n, i) => ({ id: 'v22-' + String(i).padStart(4, '0'), t: n.t, event: n.event, ref: '', to: n.to || [], toNames: n.toNames || '',
+  chunked('notifs', seed.notifs, (n, i) => ({ id: 'v22-' + String(i).padStart(4, '0'), t: n.t, event: n.event, ref: '', to: [...new Set((n.to || []).flatMap(id => { const u = seed.users.find(x => x.id === id); return u ? [id, u.desig] : [id]; }))], toNames: n.toNames || '',
     text: [n.subject, n.msg].filter(Boolean).join(' - '), status: 'Logged (no e-mail server)', done: false, doneBy: '', doneOn: '' }));
 
   return { docs, notes };

@@ -2517,7 +2517,7 @@ ACT.notifCopy = id => {
 };
 view('notifs', 'Notifications and pending actions', 'Notifications', 'Admin', 'Log', () => {
   const me = U ? (U.desig || '') : '';
-  const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
+  const mine = notifList().filter(n => !n.done && (notifForMe(n) || may('Admin')));
   const all = notifList().slice().reverse();
   return `<p class="muted">Every notice the workbook sends is logged here. E-mail is not sent by the application (no mail server is set up). Use Copy for e-mail, or the E-mail link, to send a notice yourself. Each notice stays here until it is marked done.</p>`
     + `<section class="card"><h3>Pending actions <span class="muted">${mine.length}</span></h3>` + table('notifmine', [
@@ -2529,9 +2529,11 @@ view('notifs', 'Notifications and pending actions', 'Notifications', 'Admin', 'L
       { h: 'Status', v: n => n.done ? esc('Done by ' + n.doneBy + ' ' + fdt(n.doneOn)) : esc(n.status) }], all, { name: 'Notice log' }) + '</section>';
 });
 
+// A notice is for this person if it names their designation, their role or their user ID (version 2.2 notices name users).
+const notifForMe = n => { const to = n.to || []; return to.includes(U.desig) || to.includes(U.role) || to.includes(U.id); };
 view('mydesk', 'My desk', 'My desk', 'Overview', 'Home', () => {
   const me = U ? (U.desig || '') : '';
-  const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
+  const mine = notifList().filter(n => !n.done && (notifForMe(n) || may('Admin')));
   const openJobs = (S.jobs || []).filter(j => !j.completed);
   const quick = [['po.create', 'newPO', 'New purchase order'], ['grn.create', 'newGRN', 'Receive goods (GRN)'], ['srn.create', 'newSRN', 'Service receipt (SRN)'],
     ['bill.create', 'newBILL', 'Enter a bill'], ['issue.create', 'newISS', 'Issue slip'], ['job.create', 'newJob', 'New job card'],
