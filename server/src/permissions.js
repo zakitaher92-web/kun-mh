@@ -55,6 +55,7 @@ const COLLECTION_PAGE = {
   'cfg/budgetLines': 'Budget',
   'cfg/mpl': 'MPL',
   'cfg/access': 'Access',
+  'cfg/roles': 'Access',
   'cfg/counts': 'Stores',
   'cfg/linenCounts': 'Linen Par',
   'cfg/hkExplain': 'HK Norms',
@@ -98,9 +99,10 @@ const READ_PAGES = {
 };
 const ALWAYS_READ = new Set(['m_users', 'm_items', 'm_rooms', 'm_audit', 'm_notifs', 'm_numlog']);
 
-function canRead({ role, collection, access }) {
+function canRead({ role, collection, access, roles }) {
   if (collection.startsWith('cfg') || collection.startsWith('locks/') || ALWAYS_READ.has(collection)) return true;
-  if (!role || !ROLES.includes(role)) return false;
+  const list = roles || ROLES;
+  if (!role || !list.includes(role)) return false;
   if (role === 'Admin') return true;
   const pages = READ_PAGES[collection];
   if (!pages) return false;                                 // unknown collection: refuse
@@ -123,11 +125,12 @@ function rightFor(page, role, access) {
 
 // May this role write this collection/document? role is null when the account is not linked to
 // an in-app user; such accounts may write only the any-user collections.
-function canWrite({ role, collection, access }) {
+function canWrite({ role, collection, access, roles }) {
   if (ANY_USER_COLLECTIONS.has(collection) || ANY_USER_PREFIXES.some(p => collection.startsWith(p))) {
     return true;
   }
-  if (!role || !ROLES.includes(role)) return false;
+  const list = roles || ROLES;                              // the stored role list (cfg/roles), or the eight base roles
+  if (!role || !list.includes(role)) return false;
   if (role === 'Admin') return true;                       // Admin always may (as in the app)
   const page = COLLECTION_PAGE[collection];
   if (!page) return false;                                  // unknown collection: refuse

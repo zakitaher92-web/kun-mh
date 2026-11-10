@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { canWrite, canRead } = require('./permissions');
+const { canWrite, canRead, ROLES } = require('./permissions');
 
 const APP_DIR = path.join(__dirname, '..', '..');          // the kun-mh folder (index.html)
 const CLIENT_DIR = path.join(__dirname, '..', 'client');   // server-adapter.js
@@ -157,6 +157,12 @@ function createApp(pool, options = {}) {
     const linked = Object.values(users).map(x => x && x.r).find(r => r && r.cid === accountId);
     return linked ? linked.role : null;
   }
+  // The role list (cfg/roles, version 2.2): the eight base roles when none is saved.
+  async function rolesList() {
+    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'cfg' AND id = 'roles'");
+    const list = rows.length && rows[0].data && rows[0].data.v && rows[0].data.v.list;
+    return Array.isArray(list) && list.length ? list : ROLES;
+  }
   // The saved access matrix (cfg/access, stored under "v"); null when none is saved yet.
   async function accessMatrix() {
     const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'cfg' AND id = 'access'");
@@ -215,7 +221,7 @@ function createApp(pool, options = {}) {
   // Reads: any signed-in user (the app loads its working set on start).
   // Reads (A2 follow-up): a collection the role may not see comes back empty, as if it had no records.
   async function readAllowed(user, coll) {
-    return canRead({ role: await roleOf(user.id), collection: coll, access: await accessMatrix() });
+    return canRead({ role: await roleOf(user.id), collection: coll, access: await accessMatrix(), roles: await rolesList() });
   }
 
   app.get('/api/docs/:coll', requireUser, async (req, res, next) => {
@@ -240,7 +246,7 @@ function createApp(pool, options = {}) {
   async function requireWrite(user, coll) {
     const role = await roleOf(user.id);
     const access = await accessMatrix();
-    if (!canWrite({ role, collection: coll, access })) {
+    if (!canWrite({ role, collection: coll, access, roles: await rolesList() })) {
       throw httpError(403, 'forbidden', 'Your role may not change this page. Ask the Head of Accounts if you need access.');
     }
   }

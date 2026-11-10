@@ -19,7 +19,7 @@ test('default rights match the MODULES table in index.html', () => {
 
 test('the roles match ROLES in index.html', () => {
   const src = fs.readFileSync(INDEX_HTML, 'utf8');
-  const m = src.match(/const ROLES = (\[[^\]]+\]);/);
+  const m = src.match(/const DEFAULT_ROLES = (\[[^\]]+\]);/);
   assert.deepEqual(ROLES, JSON.parse(m[1].replace(/'/g, '"')));
 });
 
@@ -121,4 +121,31 @@ test('read: a role hidden from every page that uses a collection is refused', ()
 test('read: accounts not linked to an in-app user are refused restricted collections', () => {
   assert.equal(canRead({ role: null, collection: 'm_grns', access: null }), false);
   assert.equal(canRead({ role: null, collection: 'm_items', access: null }), true);
+});
+
+/* ---------- editable role list (version 2.2) ---------- */
+test('a custom role may write only where its saved rights say E', () => {
+  const roles = [...ROLES, 'Store Auditor'];
+  const access = { Items: { 'Store Auditor': 'E' }, Vendors: { 'Store Auditor': 'V' } };
+  assert.equal(canWrite({ role: 'Store Auditor', collection: 'm_items', access, roles }), true);
+  assert.equal(canWrite({ role: 'Store Auditor', collection: 'm_vendors', access, roles }), false, 'view only');
+  assert.equal(canWrite({ role: 'Store Auditor', collection: 'm_grns', access, roles }), false, 'hidden by default');
+});
+
+test('a role that is not in the stored list is refused, even if the access matrix mentions it', () => {
+  const access = { Items: { Ghost: 'E' } };
+  assert.equal(canWrite({ role: 'Ghost', collection: 'm_items', access, roles: ROLES }), false);
+  assert.equal(canRead({ role: 'Ghost', collection: 'm_bills', access, roles: ROLES }), false);
+});
+
+test('a custom role reads a restricted collection when one of its pages is visible', () => {
+  const roles = [...ROLES, 'Store Auditor'];
+  const access = { Bills: { 'Store Auditor': 'V' } };
+  assert.equal(canRead({ role: 'Store Auditor', collection: 'm_bills', access, roles }), true);
+  assert.equal(canRead({ role: 'Store Auditor', collection: 'm_grns', access: {}, roles }), false);
+});
+
+test('the role list is an Access page setting: cfg/roles is writable by Admin only', () => {
+  assert.equal(canWrite({ role: 'Admin', collection: 'cfg/roles', access: null }), true);
+  assert.equal(canWrite({ role: 'Accounts', collection: 'cfg/roles', access: null }), false);
 });

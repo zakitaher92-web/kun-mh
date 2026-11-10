@@ -62,6 +62,6 @@ test('an unknown target role is refused before anything is read', async () => {
 
 test('the built-in change list uses roles the app knows', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'index.html'), 'utf8');
-  const roles = JSON.parse(src.match(/const ROLES = (\[[^\]]+\]);/)[1].replace(/'/g, '"'));
+  const roles = JSON.parse(src.match(/const DEFAULT_ROLES = (\[[^\]]+\]);/)[1].replace(/'/g, '"'));
   for (const c of CHANGES) assert.ok(roles.includes(c.role), c.role);
 });

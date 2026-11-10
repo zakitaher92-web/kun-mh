@@ -162,11 +162,17 @@ ol.flow li,.card ul li{margin-bottom:6px}
    Seed data: taken from KUN_Karbala_Maintenance_Housekeeping_Control.xlsm (Version 1.1, 31 Oct 2026)
    and KUN_MH_User_Access_Input.xlsx. Example rows (October 2026) are marked ex:true. */
 
-const ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts', 'Store Keeper'];
+const DEFAULT_ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts', 'Store Keeper'];
 // v2.2: a role that is checked by name in the code acts as its base role (Store Keeper acts as GRN Officer).
 const ROLE_BASE = { 'Store Keeper': 'GRN Officer' };
+// Editable role list (version 2.2): up to 20 roles, stored with the settings (cfg/roles).
+const MAX_ROLES = 20;
+const defaultRoles = () => ({ list: DEFAULT_ROLES.slice(), base: { ...ROLE_BASE } });
+const roleList = () => (S && S.roles && Array.isArray(S.roles.list) && S.roles.list.length) ? S.roles.list : DEFAULT_ROLES;
+const roleBaseOf = r => (S && S.roles && S.roles.base && S.roles.base[r]) || ROLE_BASE[r] || null;
+const isBaseRole = r => DEFAULT_ROLES.includes(r);
 
-// Module -> format and default rights per role (order as ROLES). From the Access sheet; "Rooms" and "Number Log" added.
+// Module -> format and default rights per role (order as roleList()). From the Access sheet; "Rooms" and "Number Log" added.
 const MODULES = [
   ['Guide', 'Guide', 'EVEHVVVV'],
   ['My desk', 'Home', 'EEEEEEEE'],
@@ -207,7 +213,7 @@ const MODULES = [
 
 function defaultAccess() {
   const a = {};
-  MODULES.forEach(([m, , r]) => { a[m] = {}; ROLES.forEach((role, i) => { a[m][role] = r[i]; }); });
+  MODULES.forEach(([m, , r]) => { a[m] = {}; DEFAULT_ROLES.forEach((role, i) => { a[m][role] = r[i]; }); });
   return a;
 }
 
@@ -536,7 +542,7 @@ function checkApproval(pwd) { const a = S.settings.approvalHash; return a && pwd
 /* ---------- access ---------- */
 function defaultRight(module, role) {
   const m = MODULES.find(x => x[0] === module);
-  return m ? (m[2][ROLES.indexOf(role)] || 'H') : 'H';
+  return m ? (m[2][DEFAULT_ROLES.indexOf(role)] || 'H') : 'H';
 }
 function accVal(module, role) {
   const row = S.access && S.access[module];
@@ -565,7 +571,7 @@ function canAct(id) {
   return !lim || lim.includes(U.role);
 }
 // Column rights: fields that only the named roles may change (Admin always may)
-const may = (...roles) => { if (!U) return false; const base = ROLE_BASE[U.role] || U.role; return base === 'Admin' || roles.includes(U.role) || roles.includes(base); };
+const may = (...roles) => { if (!U) return false; const base = roleBaseOf(U.role) || U.role; return base === 'Admin' || roles.includes(U.role) || roles.includes(base); };
 
 /* ---------- audit log and document numbers ---------- */
 function logAudit(action, details) { S.audit.push({ t: nowDT(), user: U ? U.id : '-', action, details: details || '' }); }
@@ -2343,7 +2349,7 @@ ACT.editUser = id => {
   if (SHARED) setTimeout(fillPeople);
   modal(isNew ? 'New user' : u.id, fields([
     { k: 'id', l: 'User ID (no spaces)', t: 'text', ed: isNew, req: 1 }, { k: 'name', l: 'Full name', t: 'text', req: 1 }, { k: 'desig', l: 'Designation', t: 'text' },
-    { k: 'role', l: 'Role', t: 'sel', o: ROLES, blank: false }, { k: 'active', l: 'Active (Y/N)', t: 'sel', o: ['Y', 'N'], blank: false }, { k: 'contact', l: 'Phone / e-mail (for resets)', t: 'text' }], u)
+    { k: 'role', l: 'Role', t: 'sel', o: roleList(), blank: false }, { k: 'active', l: 'Active (Y/N)', t: 'sel', o: ['Y', 'N'], blank: false }, { k: 'contact', l: 'Phone / e-mail (for resets)', t: 'text' }], u)
     + (SHARED ? `<h4>Linked log-in</h4><div class="grid"><div class="fld full"><label for="psq">Search by name or email</label><input id="psq" autocomplete="off" placeholder="Type a name..." oninput="App.peopleSearch(this.value)" onfocus="App.peopleSearch(this.value)">
       <input type="hidden" id="pcid" value="${esc(u.cid || '')}"><div id="psr" class="psr"></div><small id="pcur">${u.cid ? 'Currently linked: <span data-cid="' + esc(u.cid) + '">...</span> <a href="#" onclick="event.preventDefault();App.pickPerson(\'\',\'\')">Unlink</a>' : 'Not linked yet. The person must have access to this app.'}${!u.cid && u.reqCid ? '<br><b>Waiting request from <span data-cid="' + esc(u.reqCid) + '">...</span></b> - use Approve link request below.' : ''}</small></div></div>` : ''),
     [{ l: 'Save', cls: 'pri', fn: b => {
@@ -2364,10 +2370,10 @@ ACT.editUser = id => {
 function actionRightsHtml() {
   const lim = (S.access && S.access.__actions) || {};
   const rows = ACTIONS.map(([id, label, mod]) => {
-    const allowed = lim[id] || ROLES.filter(r => S.access[mod] && S.access[mod][r] === 'E');
-    return `<tr><td>${esc(label)}</td><td>${esc(mod)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? '<span class="muted">always</span>' : `<input type="checkbox" class="aa" data-a="${id}" data-r="${esc(r)}" ${allowed.includes(r) ? 'checked' : ''}>`}</td>`).join('')}</tr>`;
+    const allowed = lim[id] || roleList().filter(r => S.access[mod] && S.access[mod][r] === 'E');
+    return `<tr><td>${esc(label)}</td><td>${esc(mod)}</td>${roleList().map(r => `<td>${r === 'Admin' ? '<span class="muted">always</span>' : `<input type="checkbox" class="aa" data-a="${id}" data-r="${esc(r)}" ${allowed.includes(r) ? 'checked' : ''}>`}</td>`).join('')}</tr>`;
   }).join('');
-  return `<h3>Who may create records</h3><p class="muted">A ticked role may create the record. The page must also be editable (E) for that role. Admin always may.</p><div class="tw"><table class="acc"><thead><tr><th>Action</th><th>Page</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<h3>Who may create records</h3><p class="muted">A ticked role may create the record. The page must also be editable (E) for that role. Admin always may.</p><div class="tw"><table class="acc"><thead><tr><th>Action</th><th>Page</th>${roleList().map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function resetLoginPassword(u) {
   modal('Reset log-in password - ' + u.id, `<p>Set a temporary password for ${esc(u.name)} and give it to them personally. They sign in with their email and this password. Their open sessions end.</p><div class="grid"><div class="fld"><label for="rp1">Temporary password (at least 8 characters)</label><input id="rp1" type="password" autocomplete="new-password"></div><div class="fld"><label for="rp2">Type it again</label><input id="rp2" type="password" autocomplete="new-password"></div></div>`,
@@ -2383,8 +2389,32 @@ function resetLoginPassword(u) {
 }
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
-  return `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td class="vcol">${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
+  return rolesCard() + `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${roleList().map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${roleList().map(r => `<td class="vcol">${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
 });
+function rolesCard() {
+  const list = roleList();
+  const rows = list.map(r => `<tr><td>${esc(r)}</td><td>${isBaseRole(r) ? 'Base role' : 'Added'}</td><td>${roleBaseOf(r) ? esc(roleBaseOf(r)) : ''}</td><td>${isBaseRole(r) ? '' : `<button class="btn ghost sm" data-act="roleDel" data-id="${esc(r)}">Remove</button>`}</td></tr>`).join('');
+  return `<section class="card"><h3>Roles (${list.length} of ${MAX_ROLES})</h3><p class="muted">Add a role, then set its rights in the table below. A new role starts hidden (H) on every page. A role can be removed only when no user has it. Base roles cannot be removed.</p><div class="tw"><table class="lt"><thead><tr><th>Role</th><th>Kind</th><th>Acts as (for named checks)</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="row gap"><input id="newRole" placeholder="New role name" maxlength="40"> <button class="btn pri" data-act="roleAdd">Add role</button></div></section>`;
+}
+ACT.roleAdd = () => {
+  const name = (($('#newRole') || {}).value || '').trim();
+  if (!name) return toast('Type the role name.', 'bad');
+  const list = roleList().slice();
+  if (list.some(r => r.toLowerCase() === name.toLowerCase())) return toast('That role already exists.', 'bad');
+  if (list.length >= MAX_ROLES) return toast('Up to ' + MAX_ROLES + ' roles can be set up. Remove an unused role first.', 'bad');
+  S.roles = { list: [...list, name], base: { ...((S.roles && S.roles.base) || ROLE_BASE) } };
+  Object.keys(S.access).forEach(p => { S.access[p][name] = 'H'; });
+  commit('Role added', name); render(); toast('Role added. Set its rights in the table below.', 'ok');
+};
+ACT.roleDel = id => {
+  if (isBaseRole(id)) return toast('A base role cannot be removed.', 'bad');
+  const inUse = (S.users || []).filter(u => u.role === id).length;
+  if (inUse) return toast(inUse + ' user(s) have this role. Change them first.', 'bad');
+  const base = { ...((S.roles && S.roles.base) || ROLE_BASE) }; delete base[id];
+  S.roles = { list: roleList().filter(r => r !== id), base };
+  Object.keys(S.access).forEach(p => { delete S.access[p][id]; });
+  commit('Role removed', id); render(); toast('Role removed.', 'ok');
+};
 ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m] = S.access[x.dataset.m] || {}; S.access[x.dataset.m][x.dataset.r] = x.value; });
   const lim = {}; ACTIONS.forEach(([id]) => { lim[id] = [...document.querySelectorAll('input.aa[data-a="' + id + '"]')].filter(x => x.checked).map(x => x.dataset.r); });
   S.access.__actions = lim; commit('Access rights changed'); render(); toast('Rights saved.', 'ok'); };
@@ -2587,7 +2617,7 @@ ACT.resetAll = () => typedConfirm('Reset to example data?', (SHARED ?'The shared
 const REC = { pos: 'no', advances: 'no', grns: 'no', srns: 'no', bills: 'no', issues: 'no', jobs: 'no', numlog: 'no', laundry: 'id', ppm: 'id', rooms: 'no', users: 'id', items: 'code', vendors: 'code', audit: 'k', cpvs: 'no', notifs: 'id' };
 // Configuration kept as one document each.
 // meta first: it carries the owner, which is checked on later writes
-const CFG = ['meta', 'settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain'];
+const CFG = ['meta', 'settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain', 'roles'];
 
 let DB = null, USR = null, ME = { id: null, name: '' }, IS_OWNER = false, READONLY = false, READY = false;
 let writeQ = Promise.resolve(), writing = 0, writeErr = '', PENDING = false, gateMsg = '', bootTimer = null;
@@ -2721,6 +2751,7 @@ function buildFromRemote() {
     out.sort((a, b) => (a.o - b.o) || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     N[c] = out.map(x => x.r);
   });
+  if (!N.roles) N.roles = defaultRoles();
   S = N; S.hkExplain = S.hkExplain || {}; S.counts = S.counts || {}; S.linenCounts = S.linenCounts || {}; S.meta = S.meta || { app: 'KUN-MH' };
 }
 function applyRemote(force) {
@@ -3193,7 +3224,7 @@ const IMPORTS = {
       { k: 'id', h: 'User ID', req: 1, t: 'up', al: ['id', 'user', 'userid'], note: 'No spaces; stored in capitals.' },
       { k: 'name', h: 'Full name', req: 1, al: ['name'] },
       { k: 'desig', h: 'Designation', al: ['desig', 'title'] },
-      { k: 'role', h: 'Role', req: 1, t: 'pick', o: () => ROLES, note: 'Decides the pages the user sees (Access rights).' },
+      { k: 'role', h: 'Role', req: 1, t: 'pick', o: () => roleList(), note: 'Decides the pages the user sees (Access rights).' },
       { k: 'active', h: 'Active (Y/N)', t: 'yn', al: ['active'], note: 'N blocks the user. Default Y.' },
       { k: 'contact', h: 'Phone / e-mail', al: ['contact', 'phone', 'email', 'e-mail'] },
     ],

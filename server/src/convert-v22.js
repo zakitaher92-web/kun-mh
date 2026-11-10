@@ -76,6 +76,8 @@ function build(seed, accountId) {
     });
   }
   cfg('access', access);
+  // the editable role list (version 2.2): the roles and the base role each special role acts as
+  cfg('roles', { list: seed.cfg.roles, base: seed.cfg.roleBase || {} });
 
   // ---- MPL: a rate on an item becomes a draft price-list row (as the server version holds rates)
   const mplRows = [];
