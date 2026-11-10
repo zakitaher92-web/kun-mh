@@ -1711,7 +1711,7 @@ ACT.editPO = no => {
   ], p)}
   <h4>Item lines (MH-07) - at most 20 lines</h4><datalist id="dl_items">${S.items.map(i => `<option value="${esc(i.code + ' - ' + i.name)}">`).join('')}</datalist>${linesEditor('pol', lineCols, p.lines, edL, 20)}
   <h4>Payment terms</h4>${fields([
-    { k: 'mode', l: 'Payment mode', t: 'sel', o: S.lists.payModes, ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH },
+    { k: 'mode', l: 'Payment mode (cash only)', t: 'sel', o: ['Cash'], ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH },
     { k: 'del', l: 'On delivery / completion', t: 'pct', ed: edH }, { k: 'ret', l: 'Retention', t: 'pct', ed: edH },
     { k: 'retDays', l: 'Retention released after (days)', t: 'num', ed: edH }, { k: 'credit', l: 'Credit days after bill', t: 'num', ed: edH },
     { k: 'other', l: 'Other payment terms', t: 'area', full: true, ed: edH },
@@ -1734,7 +1734,7 @@ ACT.editPO = no => {
   modal('PO ' + no, body, [
     (edH || edL || edB) && { l: 'Save', cls: 'pri', fn: b => {
       const before = JSON.stringify(p), wasCancel = p.cancel;
-      readInto(b, p);
+      readInto(b, p); p.mode = 'Cash';
       if (edH) p.quotes = [0, 1, 2].map(i => ({ v: $('#qv' + i).value, a: numOrNull($('#qa' + i).value) })).filter(x => x.v || x.a);
       if (edL) { const ls = readLines('pol', ['qty', 'rate']); if (ls.length > 20) return toast('At most 20 lines on one PO.', 'bad'); p.lines = ls.map(l => ({ item: resolveItemText(l.item, p, true), qty: num(l.qty), rate: num(l.rate), spec: l.spec || '' })); }
       if (p.vendor && (vendor(p.vendor) || {}).avl !== 'Y' && !p.cancel) return toast('This vendor is not approved (AVL). Approve it on the Vendors page before it can be used on a PO.', 'bad');
@@ -1988,7 +1988,7 @@ ACT.editBILL = no => {
       { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1 },
       { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `<a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Use PO terms (${pct(p.adv)} of bill, max balance ${fmt(r.advBalBefore)})</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
-    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills)', t: 'sel', o: S.lists.payModes, ed: edM }])
+    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }])
       .concat([{ k: 'desc', l: 'Description of purchase / purpose', t: 'area', full: true, ed: edM }]), b)
     + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>` : '')
     + `<h4>Computed</h4>` + kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['PO value', fmt(r.poValue), 'Received (GRN + SRN)', fmt(r.received)], ['Billed to date on PO', fmt(r.billedToDate), 'Retention ' + pct(r.retPct), fmt(r.retention)], ['Advance balance before this bill', fmt(r.advBalBefore), 'Net payable', '<b>' + fmt(r.net) + '</b>']])
@@ -2053,9 +2053,9 @@ ACT.auditBill = no => {
     + '<h4>Payment computation (IQD)</h4>' + kv([['Invoice amount', fmt(b.amount), 'PO value', fmt(r.poValue)], ['Less: advance adjusted', fmt(b.advAdj), 'Received (GRN + SRN)', fmt(r.received)], ['Less: retention', fmt(r.retention), 'Billed to date on PO', fmt(r.billedToDate)], ['Less: other deductions', fmt(b.otherDed), 'Advance balance before bill', fmt(r.advBalBefore)], ['NET PAYABLE', '<b>' + fmt(r.net) + '</b>', 'Payment status', flag(r.pay)]])
     + `<h4>Checklist</h4><table class="lt"><thead><tr><th>#</th><th>Check</th><th>System result</th><th>Auditor tick</th></tr></thead><tbody>${ch.map(([t, s], i) => `<tr><td>${i + 1}</td><td>${esc(t)}</td><td>${s === 'Manual' || s === '-' ? esc(s) : flags(s)}</td><td><input type="checkbox" class="atk" data-i="${i}" ${b.checks[i] ? 'checked' : ''} ${edI ? '' : 'disabled'}></td></tr>`).join('')}</tbody></table>`
     + fields([{ k: 'audit', l: 'Audit status (Internal Auditor)', t: 'sel', o: ['Clear', 'Hold', 'Query'], ed: edI }, { k: 'auditDate', l: 'Audit date', t: 'date', ed: edI }, { k: 'auditRemarks', l: 'Auditor remarks', t: 'area', full: true, ed: edI }, { k: 'varBy', l: 'Variance approved by (Sigat / Head of Accounts)', t: 'text', ed: edI }, { k: 'varDate', l: 'Variance approval date', t: 'date', ed: edI }, { k: 'varRemarks', l: 'Variance remarks', t: 'area', full: true, ed: edI },
-      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Bank transfer to the account on the AVL' }], b),
+      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Cash payment: the voucher or receipt reference' }], b),
     [(edI || edA) && { l: 'Save', cls: 'pri', fn: body => {
-      const o = Object.assign({}, b); readInto(body, o);
+      const o = Object.assign({}, b); readInto(body, o); o.mode = 'Cash';
       if (edI) { o.checks = {}; body.querySelectorAll('.atk').forEach(x => { o.checks[x.dataset.i] = x.checked; }); }
       if (edI && o.audit === 'Clear' && r.match !== 'OK') return toast('3-way match is not OK (' + r.match + '). Mark Hold or Query with remarks.', 'bad');
       if (edI && o.audit === 'Clear' && Object.values(o.checks).filter(Boolean).length < ch.length) return toast('Tick every checklist line before marking Clear.', 'bad');
