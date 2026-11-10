@@ -2437,15 +2437,15 @@ view('cpv', 'Consolidated cash PV', 'Consolidated PV', 'Bills & payment', 'MH-16
 
 /* ---------- Notifications (workbook events). E-mail needs a mail server, which this local server does not have: events are logged and shown as pending actions. ---------- */
 const NOTIFY_EVENTS = {
-  PO_SAVED: { to: ['Internal Auditor', 'GRN Officer'], text: 'PO saved' },
+  PO_SAVED: { to: ['Internal Auditor', 'GRN Officer', 'Store Keeper'], text: 'PO saved' },
   GRN_RECEIVED: { to: ['Maintenance Masool'], text: 'Goods received (GRN)' },
   SRN_PREPARED: { to: ['Internal Auditor'], text: 'Service receipt (SRN) prepared' },
   ADVANCE_REQUESTED: { to: ['Head of Accounts', 'Internal Auditor'], text: 'Advance requested' },
   BILL_ENTERED: { to: ['Internal Auditor'], text: 'Bill entered' },
-  VARIANCE_APPROVAL: { to: ['Head of Accounts', 'Sigat member'], text: 'Bill needs variance approval' },
-  BILL_CLEARED: { to: ['Head of Accounts', 'Accounts / cashier', 'Maintenance Masool'], text: 'Bill cleared for payment' },
+  VARIANCE_APPROVAL: { to: ['Head of Accounts', 'Sigat'], text: 'Bill needs variance approval' },
+  BILL_CLEARED: { to: ['Head of Accounts', 'Accounts', 'Maintenance Masool'], text: 'Bill cleared for payment' },
   BILL_HOLD: { to: ['Maintenance Masool', 'Head of Accounts'], text: 'Bill put on hold' },
-  CPV_CREATED: { to: ['Head of Accounts', 'Accounts / cashier'], text: 'Consolidated cash PV created' },
+  CPV_CREATED: { to: ['Head of Accounts', 'Accounts'], text: 'Consolidated cash PV created' },
   CPV_PAID: { to: ['Internal Auditor', 'Maintenance Masool'], text: 'Consolidated cash PV paid' },
 };
 const ACTION_EVENT = { 'PO number issued': 'PO_SAVED', 'GRN saved': 'GRN_RECEIVED', 'SRN saved': 'SRN_PREPARED', 'Advance number issued': 'ADVANCE_REQUESTED', 'Advance updated': 'ADVANCE_REQUESTED', 'Bill entry number issued': 'BILL_ENTERED', 'Consolidated PV created': 'CPV_CREATED', 'Consolidated PV paid': 'CPV_PAID' };
