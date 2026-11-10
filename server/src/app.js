@@ -258,7 +258,7 @@ function createApp(pool, options = {}) {
       checkColl(coll); checkId(id);
       const data = req.body && req.body.data;
       if (!isPlain(data)) throw httpError(400, 'invalid_argument', 'data must be an object');
-      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll);
+      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
       await txn(async client => {
         let next_ = data;
         if (req.body.merge) {
@@ -276,7 +276,7 @@ function createApp(pool, options = {}) {
     try {
       const { coll, id } = req.params;
       checkColl(coll); checkId(id);
-      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll);
+      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
       await pool.query('DELETE FROM kv_docs WHERE coll = $1 AND id = $2', [coll, id]);
       broadcast(coll);
       res.json({ ok: true });

@@ -352,3 +352,13 @@ test('a change announced by another server process reaches this process\'s brows
     await reader.cancel();
   }, { notifier: pool.notifier });
 });
+
+test('a role that enters GRNs can update its document-number lock (the number is issued)', async () => {
+  await withServer(seedPool(), async ({ base }) => {
+    const { cookie } = await login(base, 'grn@example.test');
+    const lease = await call(base, 'POST', '/api/lease', { cookie, body: { coll: 'locks', id: 'num-GRN-2026', holder: 'tab1' } });
+    assert.equal(lease.json.acquired, true);
+    const put = await call(base, 'PUT', '/api/docs/locks/num-GRN-2026', { cookie, body: { data: { __lease: null } } });
+    assert.equal(put.status, 200, 'the lock write is allowed');
+  });
+});
