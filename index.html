@@ -54,7 +54,8 @@ input.n{text-align:right}
 /* cards, tiles */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow)}
 .card.bad{border-color:var(--bad);color:var(--bad)}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.two>.card{margin-bottom:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+td.vcol{min-width:210px}.two>.card{margin-bottom:14px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .tile[data-act]{cursor:pointer}.tile[data-act]:hover{border-color:var(--acc)}
@@ -186,6 +187,7 @@ const MODULES = [
   ['SRN', 'MH-13', 'EVEEHHVH'],
   ['SRN Print', 'MH-14', 'EEEEHHEH'],
   ['Bills', 'MH-15', 'EVEEHHEH'],
+  ['Bill Lines', 'MH-15 lines', 'EVEEHHEH'],
   ['Payment Voucher', 'MH-16A', 'EEEEHHEH'],
   ['Payment Pack', 'MH-16', 'EEEHHHEH'],
   ['Consolidated PV', 'MH-16B', 'EEEHHHEH'],
@@ -435,7 +437,7 @@ function seedData() {
   d.users = [{"id": "MASOOL", "name": "Sk Burhanuddin Bhai Jamali", "desig": "Maintenance Masool", "role": "Maintenance Masool", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "bursak52@gmail.com", "hash": null, "salt": null}, {"id": "HOA", "name": "Sk Mufaddal Bhai Yamani", "desig": "Head of Accounts", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}, {"id": "TZAKI", "name": "Taher Bhai Zaki", "desig": "Internal Auditor", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}, {"id": "GRN", "name": "Sk Murtaza Bhai Zakir", "desig": "GRN Officer", "role": "GRN Officer", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "murtazaabdealizakir@gmail.com", "hash": null, "salt": null}, {"id": "HK", "name": "Sk Ammar Bhai Vajihi", "desig": "Housekeeping supervisor", "role": "HK Supervisor", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "", "hash": null, "salt": null}, {"id": "SIGAT1", "name": "M Hamza Bhai", "desig": "Sigat member", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "hamzalunavad@najafkarbala.com", "hash": null, "salt": null}, {"id": "SIGAT2", "name": "Sk Yusuf Bhai Vapiwala", "desig": "Sigat member", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "yusufvapi@najafkarbala.com", "hash": null, "salt": null}, {"id": "TGHADIALI", "name": "Taher Bhai Ghadiali", "desig": "Internal Auditor", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}].map(u => ({ ...u, cid: '', reqCid: '' }));
   d.audit = [{ t: '2026-11-06T09:00', user: 'Consultant', action: 'Workbook masters loaded', details: 'Items, vendors, users, categories and settings from KUN control workbook Ver 1.9. Transactions not loaded.' }];
   d.numlog = [{"type": "GRN", "no": "KBL/MH/GRN/2026/0001", "t": "2026-11-05 13:47:37", "by": "HOA"}].map(n => ({ type: n.type, seq: +String(n.no).split('/').pop() || 0, no: n.no, t: n.t ? n.t.replace(' ', 'T').slice(0, 16) : '', by: n.by }));
-  d.meta.examples = false; d.meta.version = '1.9';
+  d.meta.examples = false; d.meta.version = '2.2';
   return d;
 }
 
@@ -1873,6 +1875,19 @@ function printSRN(no) {
 }
 
 /* ===== MH-15 Bills, MH-16A Payment voucher ===== */
+// Bill lines (version 2.2): the line items of each bill, read-only. Entry of bills stays on the Bills page.
+view('billlines', 'Bill lines', 'Bill Lines', 'Bills & payment', 'MH-15 lines', () => {
+  const rows = [];
+  S.bills.forEach(b => (b.lines || []).forEach(l => rows.push({ bill: b.no, date: b.date, vendor: b.vendor, po: l.po || b.po || '', line: l.line, item: l.item, uom: l.uom, qty: num(l.qty), rate: num(l.rate), amount: num(l.qty) * num(l.rate), ref: l.ref, rem: l.rem })));
+  return '<p class="muted">The line items of each bill, as entered in version 2.2. Read only: change a bill on the Bills page.</p>' + table('billlines', [
+    { h: 'Bill', v: r => '<b>' + esc(r.bill) + '</b>', x: r => r.bill }, { h: 'Date', v: r => fdate(r.date), x: r => r.date },
+    { h: 'Vendor', v: r => esc(r.vendor), x: r => r.vendor }, { h: 'PO', v: r => esc(r.po), x: r => r.po },
+    { h: 'Budget line', v: r => esc(r.line), x: r => r.line }, { h: 'Item', v: r => esc(r.item) + ' <small>' + esc(itemName(r.item)) + '</small>', x: r => itemName(r.item), w: 180 },
+    { h: 'Unit', v: r => esc(r.uom), x: r => r.uom }, { h: 'Qty', n: 1, v: r => fmtQ(r.qty), x: r => r.qty },
+    { h: 'Rate (IQD)', n: 1, v: r => fmt(r.rate), x: r => r.rate }, { h: 'Amount (IQD)', n: 1, v: r => fmt(r.amount), x: r => r.amount },
+    { h: 'GRN / SRN', v: r => esc(r.ref), x: r => r.ref }, { h: 'Remarks', v: r => esc(r.rem), x: r => r.rem },
+  ], rows, { name: 'Bill lines', noTools: false });
+});
 view('bills', 'Bills & payment vouchers', 'Bills', 'Bills & payment', 'MH-15 / 16A', () => {
   const ed = canEdit('Bills') && may('Maintenance Masool');
   tools(ed ? `<button class="btn pri" data-act="newBILL">+ New bill entry number</button>` : '');
@@ -2368,7 +2383,7 @@ function resetLoginPassword(u) {
 }
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
-  return `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
+  return `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td class="vcol">${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
 });
 ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m] = S.access[x.dataset.m] || {}; S.access[x.dataset.m][x.dataset.r] = x.value; });
   const lim = {}; ACTIONS.forEach(([id]) => { lim[id] = [...document.querySelectorAll('input.aa[data-a="' + id + '"]')].filter(x => x.checked).map(x => x.dataset.r); });

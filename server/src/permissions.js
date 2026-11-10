@@ -29,6 +29,7 @@ const DEFAULT_RIGHTS = {
   'GRN': 'EVEEEHVE',
   'SRN': 'EVEEHHVH',
   'Bills': 'EVEEHHEH',
+  'Bill Lines': 'EVEEHHEH',
   'Payment Pack': 'EEEHHHEH',
   'Consolidated PV': 'EEEHHHEH',
   'Issues': 'EVEEEVVE',

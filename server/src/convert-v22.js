@@ -92,7 +92,8 @@ function build(seed, accountId) {
     docs.push({ coll, id: 'all', data: { rows } });
   };
   rowsOf('m_items', seed.items, 'code', i => ({ ex: false, code: i.code, name: i.name, cat: i.cat, unit: i.unit,
-    reorder: null, opening: 0, par: null, norm: null, remarks: i.rem || '' }));
+    reorder: null, opening: 0, par: null, norm: null, remarks: i.rem || '',
+    pref: i.pref || '', basis: i.basis || '', apprBy: i.apprBy || '', apprOn: i.apprOn || '', appr: i.appr || '' }));
   rowsOf('m_vendors', seed.vendors, 'code', v => ({ ex: false, code: v.code, name: v.name, type: v.type, supplies: v.supplies,
     contact: '', phone: '', avl: v.avl, bank: '', remarks: v.rem || '' }));
   rowsOf('m_users', seed.users, 'id', u => ({ id: u.id, cid: u.id === 'HOA' ? accountId : '', name: u.name, role: u.role,
@@ -125,7 +126,9 @@ function build(seed, accountId) {
     vendor: b.vendor || '', line: b.bl || '', refs: b.refs || '', amount: b.amount, advAdj: 0, otherDed: b.otherDed || 0,
     audit: b.audit || '', auditRemarks: b.auditRem || '', auditDate: b.auditDate || '', pv: b.pv || '', payDate: b.payDate || '',
     payRef: b.payRef || '', desc: b.desc || '', mode: '', checks: {}, varBy: b.varBy || '', varDate: b.varDate || '',
-    varRem: b.varRem || '', clearedBy: b.clearedBy || '', cpv: b.cpv || '', cpvOn: b.cpvOn || '', varAsked: !!b.varAsked }));
+    varRem: b.varRem || '', clearedBy: b.clearedBy || '', cpv: b.cpv || '', cpvOn: b.cpvOn || '', varAsked: !!b.varAsked,
+    // bill line items from version 2.2 (kept in the data; the server screens do not show them yet)
+    lines: (b.lines || []).map(l => ({ po: l.po || '', line: l.line ?? '', item: l.item || '', uom: l.uom || '', qty: l.qty, rate: l.rate, rem: l.rem || '', ref: l.ref || '' })) }));
   // number log: the server version's record is { type, seq, no, t, by }
   chunked('numlog', seed.numlog, n => {
     const m = /(\d{4})$/.exec(n.num || ''); return { type: n.kind, seq: m ? +m[1] : 0, no: n.num, t: n.on || '', by: n.by || '', reg: n.reg || '' };

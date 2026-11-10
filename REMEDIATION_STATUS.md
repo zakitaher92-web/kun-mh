@@ -108,3 +108,21 @@ Status words: **Done** (in the code and tested) · **Done (verified in browser)*
 - **Local test server** (`server/testing/dev-server.js`): in-memory database and a log-in bypass (`devUser`) for trying screens as Admin. Never the live system. The production entry point never sets the bypass.
 - **Live PostgreSQL** (port 5433) rejected the stored password during this work, so no live database step was run.
 - **Training data** created during the chain test (vendor V-0001 approved with a placeholder bank value, an approval password, a budget of 20,000,000 for MT, PO 0003 and its GRN and bill) exists only in the in-memory test server. Nothing was written to the live system.
+
+## Version 2.2 (applied)
+
+| Item | Status | Note |
+|---|---|---|
+| Store Keeper role (eighth role) and the version 2.2 access matrix | **Done** | Rights for all eight roles on every page; tested |
+| Internal Auditor edit rights on Users and Access (from version 2.2) | **Applied, review** | Set to H on the Access rights page if not wanted |
+| Store Keeper acts as GRN Officer where checked by name | **Done** | `ROLE_BASE` in `index.html` |
+| Items edit follows the access matrix | **Done** | Already the behaviour of the server version |
+| Bill line items | **Done (data and read-only page)** | Kept on each bill; new Bill lines page (32 lines in the data) |
+| Item approval fields (apprBy, apprOn, appr) | **Done** | Kept on each item |
+| Bill Lines page | **Done** | Read only; entry stays on the Bills page |
+| Import page | **Already present** | The earlier list was wrong: the server version has it |
+| vcol table style | **Done** | Applied to the access-matrix role columns |
+| Title and version label | **Done** | Version 2.2 in the settings and the page data |
+| 20-role limit | **Not done** | The server has a fixed role list. Needs a decision: a role table that the Access, Users and permission code read at run time |
+| Rooms | **Operator** | Version 2.2 has no room list; import the real one (Data page) |
+| Notice recipients (version 2.2 `notifyMap`) | **Not applied** | The server version has its own notice rules; needs a review of both lists |
