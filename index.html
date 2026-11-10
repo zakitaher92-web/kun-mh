@@ -1016,7 +1016,8 @@ function opts(list, val, blank = true) {
   }).join('');
 }
 const itemOpts = filter => S.items.filter(filter || (() => true)).map(i => [i.code, i.code + ' - ' + i.name]);
-const vendorOpts = () => S.vendors.filter(v => v.avl === 'Y').map(v => v.name);
+const vendorOpts = () => S.vendors.map(v => v.name);
+const vendorPairs = () => S.vendors.map(v => [v.name, v.name + (v.avl === 'Y' ? '' : ' (not AVL - approve on Vendors first)')]);
 const lineOpts = () => S.budgetLines.map(b => [b.code, b.code + ' - ' + b.name]);
 const monthOpts = () => MON.map((m, i) => [i + 1, m + ' ' + S.settings.year]);
 
@@ -1562,7 +1563,7 @@ ACT.editPPM = id => {
   modal(isNew ? 'Add equipment' : p.asset, fields([
     { k: 'asset', l: 'Equipment / asset', t: 'text', ed, req: true }, { k: 'tag', l: 'Asset tag', t: 'text', ed }, { k: 'location', l: 'Location', t: 'text', ed },
     { k: 'activity', l: 'Activity', t: 'text', ed }, { k: 'freq', l: 'Frequency', t: 'sel', o: S.lists.freqs, ed, blank: false }, { k: 'doneBy', l: 'Done by', t: 'sel', o: S.lists.doneBy, ed },
-    { k: 'amcVendor', l: 'AMC vendor / contractor', t: 'sel', o: vendorOpts(), ed }, { k: 'amcPo', l: 'AMC / contract PO no.', t: 'sel', o: S.pos.map(x => x.no), ed },
+    { k: 'amcVendor', l: 'AMC vendor / contractor', t: 'sel', o: vendorPairs(), ed }, { k: 'amcPo', l: 'AMC / contract PO no.', t: 'sel', o: S.pos.map(x => x.no), ed },
     { k: 'amcExpiry', l: 'AMC expiry', t: 'date', ed }, { k: 'last', l: 'Last done', t: 'date', ed }, { k: 'remarks', l: 'Remarks', t: 'area', full: true, ed },
   ], p), [ed && { l: 'Save', cls: 'pri', fn: b => { readInto(b, p); if (!p.asset) return toast('Name the equipment.', 'bad'); if (isNew) S.ppm.push(p); closeModal(); commit(isNew ? 'PPM equipment added' : 'PPM updated', p.asset); render(); } }]);
 };
@@ -1678,7 +1679,7 @@ ACT.editPO = no => {
   ${p.emergency ? `<p class="note warn">Emergency PO: the number was issued before the order. Complete, budget-check and approve it on the next working day; receive the goods on a GRN against it.${c.signatures.length > 1 || c.approval !== 'Maintenance Masool' ? ' The Head of Accounts must be informed by phone before ordering.' : ''}</p>` : ''}
   ${locked ? `<p class="note">${p.cancel ? 'Cancelled - the number is kept and the PO no longer counts against the budget.' : `Closed on ${fdt(p.closedOn)} by ${esc(p.closedBy)}${p.shortClosed ? ' (short-closed: ' + esc(p.shortReason) + ')' : ''}. A closed PO is locked and can never be re-opened.`}</p>` : ''}
   <h4>PO header</h4>${fields([
-    { k: 'date', l: 'PO date', t: 'date', ed: edH, req: 1 }, { k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorOpts(), ed: edH, req: 1 },
+    { k: 'date', l: 'PO date', t: 'date', ed: edH, req: 1 }, { k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorPairs(), ed: edH, req: 1 },
     { k: 'line', l: 'Budget line (one per PO)', t: 'sel', o: lineOpts(), ed: edH, req: 1 }, { k: 'delivery', l: 'Delivery / completion date', t: 'date', ed: edH },
     { k: 'subject', l: 'Subject / description of work', t: 'area', full: true, ed: edH, req: 1 }, { k: 'place', l: 'Place of delivery / work', t: 'text', ed: edH },
     { k: 'emergency', l: 'Emergency', t: 'chk', cl: 'Emergency purchase (ordered before approval)', ed: edH },
@@ -1711,6 +1712,7 @@ ACT.editPO = no => {
       readInto(b, p);
       if (edH) p.quotes = [0, 1, 2].map(i => ({ v: $('#qv' + i).value, a: numOrNull($('#qa' + i).value) })).filter(x => x.v || x.a);
       if (edL) { const ls = readLines('pol', ['qty', 'rate']); if (ls.length > 20) return toast('At most 20 lines on one PO.', 'bad'); p.lines = ls.map(l => ({ item: resolveItemText(l.item, p, true), qty: num(l.qty), rate: num(l.rate), spec: l.spec || '' })); }
+      if (p.vendor && (vendor(p.vendor) || {}).avl !== 'Y' && !p.cancel) return toast('This vendor is not approved (AVL). Approve it on the Vendors page before it can be used on a PO.', 'bad');
       if (p.cancel && !p.remarks) { p.cancel = wasCancel; return toast('Give the reason for cancellation in Remarks.', 'bad'); }
       if (p.cancel && !wasCancel && S.advances.some(a => a.po === p.no && a.paidDate)) toast('An advance was paid on this PO - it must be recovered.', 'warn');
       commit(p.cancel && !wasCancel ? 'PO cancelled' : (JSON.stringify(p) !== before ? 'PO updated' : ''), p.no + (p.cancel ? ' - ' + p.remarks : ''));
@@ -1961,7 +1963,7 @@ ACT.editBILL = no => {
       { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1 },
       { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `<a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Use PO terms (${pct(p.adv)} of bill, max balance ${fmt(r.advBalBefore)})</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
-    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorOpts(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills)', t: 'sel', o: S.lists.payModes, ed: edM }])
+    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills)', t: 'sel', o: S.lists.payModes, ed: edM }])
       .concat([{ k: 'desc', l: 'Description of purchase / purpose', t: 'area', full: true, ed: edM }]), b)
     + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>` : '')
     + `<h4>Computed</h4>` + kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['PO value', fmt(r.poValue), 'Received (GRN + SRN)', fmt(r.received)], ['Billed to date on PO', fmt(r.billedToDate), 'Retention ' + pct(r.retPct), fmt(r.retention)], ['Advance balance before this bill', fmt(r.advBalBefore), 'Net payable', '<b>' + fmt(r.net) + '</b>']])
