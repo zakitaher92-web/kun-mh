@@ -4,6 +4,7 @@
 //   npm run user -- password <email> <new-password>
 //   npm run user -- disable <email>  |  enable <email>
 //   npm run user -- list
+//   npm run user -- link <email> <in-app user id>   (sets which in-app user this log-in is)
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { createPool, applySchema } = require('./db');
@@ -17,7 +18,8 @@ function usage() {
   npm run user -- password <email> <new-password>
   npm run user -- disable <email>
   npm run user -- enable <email>
-  npm run user -- list`);
+  npm run user -- list
+  npm run user -- link <email> <in-app user id>`);
 }
 function need(list, n) { if (list.length < n) { usage(); throw new Error('Missing arguments'); } }
 
@@ -53,6 +55,29 @@ async function main() {
   } else if (command === 'list') {
     const { rows } = await pool.query('SELECT email, name, active, last_login FROM accounts ORDER BY email');
     console.table(rows.map(r => ({ email: r.email, name: r.name, active: r.active ? 'yes' : 'no', last_login: r.last_login ? r.last_login.toISOString() : '' })));
+  } else if (command === 'link') {
+    // Points an in-app user (Admin > Users) at this log-in. Needed after the master file is loaded,
+    // because that file carries the account IDs of the database it came from.
+    need(args, 2);
+    const [email, userId] = args;
+    const acc = await pool.query('SELECT id FROM accounts WHERE email = $1', [email.toLowerCase()]);
+    if (!acc.rows.length) throw new Error('No log-in with email ' + email);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query("SELECT data FROM kv_docs WHERE coll = 'm_users' AND id = 'all' FOR UPDATE");
+      if (!rows.length) throw new Error('The user list (m_users/all) is not in this database. Load the master file first.');
+      const doc = rows[0].data;
+      const users = doc.rows || {};
+      if (!users[userId] || !users[userId].r) throw new Error('No in-app user with ID ' + userId);
+      const accountId = acc.rows[0].id;
+      for (const x of Object.values(users)) if (x && x.r && x.r.cid === accountId) x.r.cid = '';
+      users[userId].r.cid = accountId;
+      await client.query("UPDATE kv_docs SET data = $1::jsonb, updated_by = 'manage-link', updated_at = now() WHERE coll = 'm_users' AND id = 'all'", [JSON.stringify(doc)]);
+      await client.query('COMMIT');
+      console.log('Linked ' + email + ' to in-app user ' + userId + '.');
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+    finally { client.release(); }
   } else {
     usage();
   }
