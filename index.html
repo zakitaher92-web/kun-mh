@@ -2260,9 +2260,9 @@ ACT.editVendor = code => {
   modal(isNew ? 'New vendor' : v.name, fields([
     { k: 'code', l: 'Vendor code', t: 'text', ed: ed && !used }, { k: 'name', l: 'Vendor / contractor name', t: 'text', ed: ed && !used, req: 1 }, { k: 'type', l: 'Type', t: 'sel', o: S.lists.vendorTypes, ed },
     { k: 'supplies', l: 'Supplies (category)', t: 'text', ed }, { k: 'contact', l: 'Contact person', t: 'text', ed }, { k: 'phone', l: 'Phone', t: 'text', ed },
-    { k: 'avl', l: 'On AVL? (Y/N)', t: 'sel', o: ['Y', 'N'], ed, blank: false }, { k: 'bank', l: 'Bank account name & bank (verified)', t: 'text', ed }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], v),
+    { k: 'bank', l: 'Bank account name & bank (verified)', t: 'text', ed }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], v),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
-      const o = Object.assign({}, v); readInto(b, o); if (!o.name) return toast('Name is required.', 'bad');
+      const o = Object.assign({}, v); readInto(b, o); o.avl = 'Y'; if (!o.name) return toast('Name is required.', 'bad');
       if (/[\u0600-\u06FF]/.test(o.name)) return toast('Vendor names must be written in English letters.', 'bad');
       if (S.vendors.some(x => x !== v && (x.code === o.code || x.name === o.name))) return toast('Code and name must be unique.', 'bad');
       Object.assign(v, o); if (isNew) S.vendors.push(v); closeModal(); commit(isNew ? 'Vendor added' : 'Vendor updated', v.name); render();
@@ -3102,7 +3102,7 @@ const IMPORTS = {
       { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category', 'items supplied', 'products', 'services', 'nature of business', 'scope'] },
       { k: 'contact', h: 'Contact person', al: ['contact', 'contact name', 'person'] },
       { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no', 'phone number', 'mobile no', 'mobile number', 'contact no', 'contact number', 'whatsapp'] },
-      { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Default Y.' },
+      { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Every vendor is approved when it is imported; the column is kept for information only.' },
       { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
       { k: 'remarks', h: 'Remarks', al: ['notes', 'comments'] },
     ],
@@ -3121,6 +3121,7 @@ const IMPORTS = {
       }
     },
     blank: () => ({ code: '', name: '', type: 'Supplier', supplies: '', contact: '', phone: '', avl: 'Y', bank: '', remarks: '' }),
+    fix: o => { o.avl = 'Y'; },
     show: ['code', 'name', 'type', 'phone', 'avl'],
   },
   mpl: {

@@ -93,7 +93,7 @@ function build(seed, accountId) {
     reorder: null, opening: 0, par: null, norm: null, remarks: i.rem || '',
     pref: i.pref || '', basis: i.basis || '', mpl: i.mpl ?? null, appr: i.appr ?? null, prev: null, apprBy: i.apprBy || '', apprOn: i.apprOn || '' }));
   rowsOf('m_vendors', seed.vendors, 'code', v => ({ ex: false, code: v.code, name: v.name, type: v.type, supplies: v.supplies,
-    contact: '', phone: '', avl: v.avl, bank: '', remarks: v.rem || '' }));
+    contact: '', phone: '', avl: 'Y', bank: '', remarks: v.rem || '' }));
   rowsOf('m_users', seed.users, 'id', u => ({ id: u.id, cid: u.id === 'HOA' ? accountId : '', name: u.name, role: u.role,
     desig: u.desig || '', active: u.active ? 'Y' : 'N', reqCid: '', contact: '', lastLogin: '', mustChange: !!u.mustChange, remarks: u.remarks || '' }));
 
