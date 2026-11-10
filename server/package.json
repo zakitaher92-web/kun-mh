@@ -15,7 +15,8 @@
     "masters:import": "node --env-file-if-exists=.env src/import-masters.js",
     "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js",
     "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js",
-    "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js"
+    "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js",
+    "db:status": "node src/db-status.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
