@@ -1,3 +1,4 @@
+const fs = require('fs');
 'use strict';
 // Local test server: the real app and routes on an in-memory database (no PostgreSQL needed).
 // Use it only to try the screens. Data is lost when it stops. Not for the live system.
@@ -26,5 +27,10 @@ const pool = createFakePool({
 // Log-in is switched off for local testing: every request acts as the Head of Accounts (Admin).
 const DEV_USER = { id: 'a-adm', email: 'hoa@test.local', name: 'Head of Accounts' };
 // TEST_LOGIN=1 turns the bypass off, so the real sign-in can be tried (for example as the Supervisor).
+// SEED_DOCS=<file>: load documents (for example from convert-v22.js) into the in-memory database.
+if (process.env.SEED_DOCS) {
+  for (const d of JSON.parse(fs.readFileSync(process.env.SEED_DOCS, 'utf8'))) pool.state.kv.set(d.coll + '|' + d.id, d.data);
+  console.log('loaded documents from ' + process.env.SEED_DOCS);
+}
 const { app } = createApp(pool, { cookieSecure: false, devUser: process.env.TEST_LOGIN === '1' ? undefined : DEV_USER });
 app.listen(PORT, '127.0.0.1', () => console.log(`test server on http://127.0.0.1:${PORT} (password for both accounts: ${PASSWORD})`));

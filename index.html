@@ -161,44 +161,46 @@ ol.flow li,.card ul li{margin-bottom:6px}
    Seed data: taken from KUN_Karbala_Maintenance_Housekeeping_Control.xlsm (Version 1.1, 31 Oct 2026)
    and KUN_MH_User_Access_Input.xlsx. Example rows (October 2026) are marked ex:true. */
 
-const ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts'];
+const ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts', 'Store Keeper'];
+// v2.2: a role that is checked by name in the code acts as its base role (Store Keeper acts as GRN Officer).
+const ROLE_BASE = { 'Store Keeper': 'GRN Officer' };
 
 // Module -> format and default rights per role (order as ROLES). From the Access sheet; "Rooms" and "Number Log" added.
 const MODULES = [
-  ['Guide', 'Guide', 'EVVHVVV'],
-  ['My desk', 'Home', 'EEEEEEE'],
-  ['Dashboard', 'MH-24', 'EVVHHHV'],
-  ['Rooms', 'Desk', 'EVVEVEH'],
-  ['Settings', 'MH-01', 'EVVHHHH'],
-  ['Budget', 'MH-02', 'EVVHHHV'],
-  ['Items', 'MH-03', 'EVVHHHV'],
-  ['Vendors', 'MH-04', 'EVVHHHV'],
-  ['MPL', 'MH-05', 'EVVHHHV'],
-  ['PO Register', 'MH-06', 'EVEEVHV'],
-  ['PO Lines', 'MH-07', 'EVVEVHV'],
-  ['PO Print', 'MH-08', 'EEEEEHE'],
-  ['Advances', 'MH-09', 'EVVEHHE'],
-  ['Advance Print', 'MH-10', 'EEEEHHE'],
-  ['GRN', 'MH-11', 'EVVVEHV'],
-  ['GRN Print', 'MH-12', 'EEEEEHE'],
-  ['SRN', 'MH-13', 'EVVEHHV'],
-  ['SRN Print', 'MH-14', 'EEEEHHE'],
-  ['Bills', 'MH-15', 'EVEEHHE'],
-  ['Payment Voucher', 'MH-16A', 'EEEEHHE'],
-  ['Payment Pack', 'MH-16', 'EEEHHHE'],
-  ['Consolidated PV', 'MH-16B', 'EEEHHHE'],
-  ['Issues', 'MH-17', 'EVVVEVV'],
-  ['Stores', 'MH-18', 'EVVVEHV'],
-  ['HK Norms', 'MH-19', 'EVVVHVV'],
-  ['Linen Par', 'MH-20', 'EVVVHEV'],
-  ['Laundry Log', 'MH-21', 'EVVVHEV'],
-  ['Job Cards', 'MH-22', 'EVVEVVH'],
-  ['PPM AMC', 'MH-23', 'EVVEHHH'],
-  ['Audit Log', 'Log', 'VVVHHHH'],
-  ['Notifications', 'Log', 'VVVHHHH'],
-  ['Number Log', 'Log', 'VHHHHHH'],
-  ['Users', 'Admin', 'EHHHHHH'],
-  ['Access', 'Admin', 'EHHHHHH'],
+  ['Guide', 'Guide', 'EVEHVVVV'],
+  ['My desk', 'Home', 'EEEEEEEE'],
+  ['Dashboard', 'MH-24', 'EVEHHHVH'],
+  ['Rooms', 'Desk', 'EVVEVEHH'],
+  ['Settings', 'MH-01', 'EVEHHHHH'],
+  ['Budget', 'MH-02', 'EVEHHHVH'],
+  ['Items', 'MH-03', 'EVEEVHVH'],
+  ['Vendors', 'MH-04', 'EVEEHHVH'],
+  ['MPL', 'MH-05', 'EVEEVHVH'],
+  ['PO Register', 'MH-06', 'EVEEVHVV'],
+  ['PO Lines', 'MH-07', 'EVEEVHVV'],
+  ['PO Print', 'MH-08', 'EEEEEHEE'],
+  ['Advances', 'MH-09', 'EVEEHHEH'],
+  ['Advance Print', 'MH-10', 'EEEEHHEH'],
+  ['GRN', 'MH-11', 'EVEEEHVE'],
+  ['GRN Print', 'MH-12', 'EEEEEHEE'],
+  ['SRN', 'MH-13', 'EVEEHHVH'],
+  ['SRN Print', 'MH-14', 'EEEEHHEH'],
+  ['Bills', 'MH-15', 'EVEEHHEH'],
+  ['Payment Voucher', 'MH-16A', 'EEEEHHEH'],
+  ['Payment Pack', 'MH-16', 'EEEHHHEH'],
+  ['Consolidated PV', 'MH-16B', 'EEEHHHEH'],
+  ['Issues', 'MH-17', 'EVEEEVVE'],
+  ['Stores', 'MH-18', 'EVEEEHVE'],
+  ['HK Norms', 'MH-19', 'EVEEHVVH'],
+  ['Linen Par', 'MH-20', 'EVEEHEVH'],
+  ['Laundry Log', 'MH-21', 'EVEEHEVH'],
+  ['Job Cards', 'MH-22', 'EVEEVVHV'],
+  ['PPM AMC', 'MH-23', 'EVEEHHHH'],
+  ['Audit Log', 'Log', 'VVVHHHHH'],
+  ['Notifications', 'Log', 'VVVHHHHH'],
+  ['Number Log', 'Log', 'VHHHHHHH'],
+  ['Users', 'Admin', 'EHEHHHHH'],
+  ['Access', 'Admin', 'EHEHHHHH'],
 ];
 
 function defaultAccess() {
@@ -561,7 +563,7 @@ function canAct(id) {
   return !lim || lim.includes(U.role);
 }
 // Column rights: fields that only the named roles may change (Admin always may)
-const may = (...roles) => U && (U.role === 'Admin' || roles.includes(U.role));
+const may = (...roles) => { if (!U) return false; const base = ROLE_BASE[U.role] || U.role; return base === 'Admin' || roles.includes(U.role) || roles.includes(base); };
 
 /* ---------- audit log and document numbers ---------- */
 function logAudit(action, details) { S.audit.push({ t: nowDT(), user: U ? U.id : '-', action, details: details || '' }); }

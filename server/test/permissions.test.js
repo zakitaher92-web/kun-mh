@@ -9,7 +9,7 @@ const INDEX_HTML = path.join(__dirname, '..', '..', 'index.html');
 
 test('default rights match the MODULES table in index.html', () => {
   const src = fs.readFileSync(INDEX_HTML, 'utf8');
-  const rows = [...src.matchAll(/\['([^']+)', '[^']*', '([EVH]{7})'\]/g)];
+  const rows = [...src.matchAll(/\['([^']+)', '[^']*', '([EVH]{8})'\]/g)];
   assert.ok(rows.length >= 25, 'MODULES table not found in index.html');
   const fromApp = Object.fromEntries(rows.map(m => [m[1], m[2]]));
   for (const [page, rights] of Object.entries(DEFAULT_RIGHTS)) {
@@ -36,11 +36,16 @@ test('GRN Officer may write GRNs but not items, vendors or bills', () => {
   assert.equal(canWrite({ role: 'GRN Officer', collection: 'm_bills', access: null }), false);
 });
 
-test('only Admin may change the access matrix and users', () => {
+test('the access matrix and users follow the saved matrix (v2.2): Admin always; others only where the matrix says E', () => {
+  // v2.2 gives the Internal Auditor edit rights on Users and Access. This is deliberate in v2.2 and
+  // is flagged for review; the test records the current behaviour.
+  assert.equal(canWrite({ role: 'Admin', collection: 'cfg/access', access: null }), true);
   for (const role of ROLES.filter(r => r !== 'Admin')) {
-    assert.equal(canWrite({ role, collection: 'cfg/access', access: null }), false, role);
-    assert.equal(canWrite({ role, collection: 'm_users', access: null }), false, role);
+    const expected = { Users: rightFor('Users', role, null) === 'E', Access: rightFor('Access', role, null) === 'E' };
+    assert.equal(canWrite({ role, collection: 'cfg/access', access: null }), expected.Access, role + ' access');
+    assert.equal(canWrite({ role, collection: 'm_users', access: null }), expected.Users, role + ' users');
   }
+  assert.equal(canWrite({ role: 'Internal Auditor', collection: 'm_users', access: null }), true, 'v2.2 Internal Auditor edits Users');
 });
 
 test('Internal Auditor may audit bills (Bills page is E for the auditor)', () => {
@@ -67,7 +72,8 @@ test('unknown collections are refused for every role except Admin', () => {
 
 test('accounts not linked to an in-app user cannot write business records', () => {
   assert.equal(canWrite({ role: null, collection: 'm_grns', access: null }), false);
-  assert.equal(canWrite({ role: 'Store Keeper', collection: 'm_grns', access: null }), false);
+  assert.equal(canWrite({ role: 'Store Keeper', collection: 'm_grns', access: null }), true, 'v2.2 Store Keeper enters GRNs');
+  assert.equal(canWrite({ role: 'Stranger', collection: 'm_grns', access: null }), false, 'an unknown role is refused');
 });
 
 test('audit, notices, number log and locks are writable by any signed-in user', () => {
