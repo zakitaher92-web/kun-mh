@@ -1856,6 +1856,7 @@ ACT.newGRN = async () => {
 };
 App.grnPO = sel => { const g = S.grns.find(x => x.no === sel.dataset.doc); g.noPo = sel.value === '__NOPO__'; g.po = g.noPo ? '' : sel.value; const lines = readLines('grl', ['recd', 'acc']); g.lines = lines; ACT.editGRN(g.no); };
 App.srnPO = sel => { const s = S.srns.find(x => x.no === sel.dataset.doc); s.po = sel.value; s.lines = readLines('srl', ['qty']); ACT.editSRN(s.no); };
+ACT.newItemFromGRN = () => ACT.editItem('');
 ACT.editGRN = no => {
   const g = S.grns.find(x => x.no === no), p = findPO(g.po);
   const billed = S.bills.some(b => (b.refs || '').includes(no));
@@ -1866,7 +1867,7 @@ ACT.editGRN = no => {
   modal('GRN ' + no, (billed ? '<p class="note">A bill quotes this GRN - it can no longer be changed.</p>' : '') + `<div class="grid"><div class="fld"><label>PO no. (approved POs only) <i>*</i></label><select data-doc="${esc(no)}" onchange="App.grnPO(this)" ${ed ? '' : 'disabled'}>${opts([['__NOPO__', 'No PO - purchase below the PO limit (reason and approver needed)']].concat(openPOs().filter(x => x.approvedBy || x.no === g.po).map(x => [x.no, x.no + ' - ' + x.vendor])), g.noPo ? '__NOPO__' : g.po)}</select></div></div>`
     + fields([{ k: 'date', l: 'Date received', t: 'date', ed }, { k: 'challan', l: 'Challan / delivery note no.', t: 'text', ed }, { k: 'by', l: 'Received by (GRN Officer)', t: 'text', ed }, { k: 'remarks', l: 'Remarks / reason for rejection', t: 'text', ed }], g)
     + (p ? `<h4>PO lines - ${esc(p.vendor)}</h4>${poLinesHint(p, 'stock')}` : g.noPo ? fields([{ k: 'noPoReason', l: 'Reason for receiving without a PO', t: 'text', ed, req: 1 }, { k: 'noPoBy', l: 'Approved by (Maintenance Masool)', t: 'text', ed, req: 1 }], g) : '<p class="note warn">No PO - no GRN. Choose the approved PO first.</p>')
-    + `<h4>Items received</h4>` + linesEditor('grl', [
+    + `<h4>Items received</h4>` + (ed ? `<p><button class="btn" type="button" data-act="newItemFromGRN">+ New item (not in the list)</button> <span class="small">Save the item, then reopen this GRN to pick it.</span></p>` : '') + linesEditor('grl', [
       { k: 'item', h: 'Item', t: 'sel', o: pl, w: 220 }, { k: 'recd', h: 'Qty received', t: 'num', w: 80 }, { k: 'acc', h: 'Qty accepted', t: 'num', w: 80 },
       { k: 'remarks', h: 'Remarks', t: 'text', w: 140 }, { h: 'Check', t: 'ro', ro: (l, i) => rows[i] ? flags(rows[i].check) : '' }], g.lines, ed && (!!p || !!g.noPo), 20),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
@@ -1990,6 +1991,11 @@ App.billQty = () => {
   const t = [...document.querySelectorAll('#modal .bq')].reduce((s, el) => s + Math.round(num(el.value) * num(el.dataset.rate)), 0);
   const a = document.querySelector('#f_amount'); if (a) a.value = t;
 };
+// Value of GRNs received without a PO: accepted quantity x MPL rate.
+function noPoGrnValue(refs) {
+  const nos = refs.split(/;\s*/).filter(Boolean);
+  return S.grns.filter(g => nos.includes(g.no)).reduce((s, g) => s + (g.lines || []).reduce((a, l) => { const m = mplRate(l.item, ''); const acc = l.acc === null || l.acc === undefined ? num(l.recd) : num(l.acc); return a + acc * (m ? m.rate : 0); }, 0), 0);
+}
 function advBal(b) {
   const p = findPO(b.po), pc = p && C.po[p.no];
   if (!p || !pc) return 0;
@@ -2035,7 +2041,8 @@ ACT.editBILL = no => {
   if (p && b.invoicedAmount == null) b.invoicedAmount = b.amount;
   const paid = !!b.payDate;
   const edM = canEdit('Bills') && may('Maintenance Masool') && !paid && b.audit !== 'Clear';
-  const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no)) : [];
+  const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no))
+    : S.grns.filter(g => !g.po && g.noPo && !S.bills.some(x => x.no !== b.no && (x.refs || '').split(/;\s*/).includes(g.no))).map(g => g.no);
   const refs = (b.refs || '').split(/;\s*/).filter(Boolean);
   if (p && num(p.adv) > 0) setTimeout(() => { const amtEl = $('#f_amount'), advEl = $('#f_advAdj'); if (amtEl && advEl) amtEl.addEventListener('input', () => { advEl.value = advOnPO(b, numOrNull(amtEl.value)); }); }, 0);
   if (p && edM) setTimeout(() => App.billQty(), 0);
@@ -2052,12 +2059,14 @@ ACT.editBILL = no => {
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
     ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }])
       .concat([{ k: 'desc', l: 'Description of purchase / purpose', t: 'area', full: true, ed: edM }]), b)
-    + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>` : '')
+    + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>`
+      : `<h4>GRNs without a PO (not yet billed)</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="small">None. Enter the GRN for a no-PO purchase first (GRN page, No PO).</span>'}</div>`)
     + `<h4>Computed</h4>` + kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['PO value', fmt(r.poValue), 'Received (GRN + SRN)', fmt(r.received)], ['Billed to date on PO', fmt(r.billedToDate), 'Retention ' + pct(r.retPct), fmt(r.retention)], ['Advance balance before this bill', fmt(r.advBalBefore), 'Net payable', '<b>' + fmt(r.net) + '</b>']])
     + `<h4>Pre-payment audit and payment</h4>` + kv([['Audit status', b.audit ? flag(b.audit) : 'Awaiting audit', 'Auditor remarks', esc(b.auditRemarks)], ['PV no.', esc(b.pv), 'Paid on / reference', fdate(b.payDate) + ' ' + esc(b.payRef)]]),
     [edM && { l: 'Save', cls: 'pri', fn: body => {
       readInto(body, b);
-      if (p) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      if (p || refsAvail.length) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      if (!p && b.refs) b.amount = noPoGrnValue(b.refs);
       if (p) {
         const reduced = [], items = [];
         body.querySelectorAll('.bq').forEach(el => {
@@ -2294,7 +2303,7 @@ ACT.editLaundry = id => {
 const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.items.some(i => i.code === code && (num(i.mpl) > 0 || num(i.appr) > 0));
 view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   const ed = canEdit('Items');
-  tools((ed ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
+  tools((ed || may('GRN Officer') ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
   return `<p class="muted">The only place items, services and norms are defined. Kept by the Head of Accounts on the Masool's request. Never rename an item once used - add a new one. Norms and par levels are indicative starting values.</p>` + table('items', [
     { h: 'Code', v: i => `<b>${esc(i.code)}</b>` }, { h: 'Item / service', v: i => esc(i.name) }, { h: 'Category', v: i => esc(i.cat) }, { h: 'Budget line', v: i => esc(itemLine(i.code)) },
     { h: 'Type', v: i => esc(itemType(i.code)) }, { h: 'Unit', v: i => esc(i.unit) }, { h: 'HK norm / 100 zd', n: 1, v: i => fmtQ(i.norm) }, { h: 'Linen par / bed', n: 1, v: i => fmtQ(i.par) },
@@ -2302,9 +2311,10 @@ view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   ], S.items, { click: 'editItem', key: i => i.code, name: 'Items' });
 });
 ACT.editItem = code => {
-  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '', mpl: null, appr: null, pref: '', basis: '' } : item(code), ed = canEdit('Items'), used = !isNew && usedItem(code);
-  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code and name cannot change. Add a new item instead.</p>' : '') + fields([
-    { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: ed && !used, req: 1 },
+  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '', mpl: null, appr: null, pref: '', basis: '' } : item(code), used = !isNew && usedItem(code);
+  const ed = canEdit('Items') || (isNew && may('GRN Officer')), canRename = !isNew && may('Maintenance Masool') && canEdit('Items');
+  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code cannot change.' + (canRename ? ' Maintenance Masool may correct the spelling of the name.' : '') + '</p>' : '') + fields([
+    { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: (ed && !used) || canRename, req: 1 },
     { k: 'cat', l: 'Category (fixes budget line and type)', t: 'sel', o: S.categories.map(c => [c.name, c.name + ' (' + c.line + ', ' + c.type + ')']), ed, req: 1 }, { k: 'unit', l: 'Unit', t: 'sel', o: S.lists.units, ed },
     { k: 'norm', l: 'HK norm per 100 zaereen-days', t: 'num', ed }, { k: 'par', l: 'Linen par per bed', t: 'num', ed }, { k: 'reorder', l: 'Re-order level', t: 'num', ed },
     { k: 'opening', l: 'Opening stock at go-live (qty)', t: 'num', ed, hint: 'Physical count on ' + fdate(S.settings.stockOpenDate) }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed },

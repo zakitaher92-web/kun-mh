@@ -251,6 +251,29 @@ function createApp(pool, options = {}) {
     }
   }
 
+  // Items: a GRN Officer (or Store Keeper, who acts as one) may only ADD items; existing items cannot change or go.
+  async function requireItemsWrite(user, data, merge) {
+    const role = await roleOf(user.id);
+    const access = await accessMatrix();
+    const roles = await rolesList();
+    if (canWrite({ role, collection: 'm_items', access, roles })) return;
+    if (role !== 'GRN Officer' && role !== 'Store Keeper') return requireWrite(user, 'm_items');
+    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'm_items' AND id = 'all'");
+    const old = (rows[0] && rows[0].data) || { rows: {} };
+    const next = merge ? deepMerge(old, data) : data;
+    const oldRows = old.rows || {}, newRows = (next && next.rows) || {};
+    for (const k of Object.keys(oldRows)) {
+      if (!newRows[k] || JSON.stringify(newRows[k].r) !== JSON.stringify(oldRows[k].r)) {
+        throw httpError(403, 'forbidden', 'The GRN Officer may add new items only. Existing items are changed by the Maintenance Masool.');
+      }
+    }
+    for (const k of Object.keys(newRows)) {
+      if (oldRows[k]) continue;
+      const r = (newRows[k] && newRows[k].r) || {};
+      if (!r.code || !r.name || !r.cat) throw httpError(400, 'invalid_argument', 'A new item needs a code, name and category.');
+    }
+  }
+
   // body: { data, merge }  merge=false replaces the document, merge=true merges into it (the app's "update")
   app.put('/api/docs/:coll/:id', requireUser, async (req, res, next) => {
     try {
@@ -258,7 +281,8 @@ function createApp(pool, options = {}) {
       checkColl(coll); checkId(id);
       const data = req.body && req.body.data;
       if (!isPlain(data)) throw httpError(400, 'invalid_argument', 'data must be an object');
-      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
+      if (coll === 'm_items' && id === 'all') await requireItemsWrite(req.user, data, !!req.body.merge);
+      else await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
       await txn(async client => {
         let next_ = data;
         if (req.body.merge) {
