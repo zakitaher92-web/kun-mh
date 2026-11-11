@@ -2312,8 +2312,8 @@ view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
 });
 ACT.editItem = code => {
   const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '', mpl: null, appr: null, pref: '', basis: '' } : item(code), used = !isNew && usedItem(code);
-  const ed = canEdit('Items') || (isNew && may('GRN Officer')), canRename = !isNew && may('Maintenance Masool') && canEdit('Items');
-  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code cannot change.' + (canRename ? ' Maintenance Masool may correct the spelling of the name.' : '') + '</p>' : '') + fields([
+  const ed = canEdit('Items') || (isNew && may('GRN Officer')), canRename = !isNew && may('Maintenance Masool', 'Internal Auditor') && canEdit('Items');
+  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code cannot change.' + (canRename ? ' Maintenance Masool, Head of Accounts or Internal Auditor may correct the spelling of the name.' : '') + '</p>' : '') + fields([
     { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: (ed && !used) || canRename, req: 1 },
     { k: 'cat', l: 'Category (fixes budget line and type)', t: 'sel', o: S.categories.map(c => [c.name, c.name + ' (' + c.line + ', ' + c.type + ')']), ed, req: 1 }, { k: 'unit', l: 'Unit', t: 'sel', o: S.lists.units, ed },
     { k: 'norm', l: 'HK norm per 100 zaereen-days', t: 'num', ed }, { k: 'par', l: 'Linen par per bed', t: 'num', ed }, { k: 'reorder', l: 'Re-order level', t: 'num', ed },
