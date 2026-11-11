@@ -735,7 +735,11 @@ function recalc() {
   S.bills.forEach(b => { const v = b.po ? (findPO(b.po) || {}).vendor : b.vendor; const k = (v || '') + '|' + String(b.invNo || '').trim().toLowerCase(); if (b.invNo) invKey[k] = (invKey[k] || 0) + 1; });
   S.bills.slice().sort((a, b) => a.no.localeCompare(b.no)).forEach(b => {
     const p = b.po ? findPO(b.po) : null, pc = p && C.po[p.no];
-    const amt = num(b.amount), adj = num(b.advAdj), oth = num(b.otherDed);
+    let amt = num(b.amount);
+    const adj = num(b.advAdj), oth = num(b.otherDed);
+    // Bills saved before quantity billing have a typed amount and no items: they cannot bill more than the accepted value on the PO.
+    let legacyCap = null;
+    if (p && pc && !Array.isArray(b.items)) { legacyCap = Math.max(0, Math.round(pc.received - (billedSoFar[p.no] || 0))); if (amt > legacyCap + 0.5) amt = legacyCap; }
     const r = { vendor: p ? p.vendor : b.vendor, line: p ? p.line : b.line, poValue: pc ? pc.value : null, received: pc ? pc.received : null, retPct: p ? num(p.ret) : 0 };
     r.billedToDate = p ? (billedSoFar[p.no] || 0) + amt : null;
     if (p) billedSoFar[p.no] = r.billedToDate;
@@ -745,6 +749,7 @@ function recalc() {
     if (p) advAdjSoFar[p.no] = (advAdjSoFar[p.no] || 0) + adj;
     r.net = amt - adj - r.retention - oth;
     const f = [];
+    if (legacyCap !== null && num(b.amount) > legacyCap + 0.5) f.push('Above accepted value on GRN / SRN (' + fmt(legacyCap) + ') - open the bill and Save to reduce it');
     if (!b.po) {
       if (amt >= num(st.poFrom)) f.push('No PO for bill above PO limit');
       if (!b.vendor || !b.line) f.push('Vendor / budget line missing');
