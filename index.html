@@ -1140,7 +1140,7 @@ function field(f, obj) {
     case 'chk': inp = `<label class="chk"><input type="checkbox" id="${id}" data-k="${f.k}" data-t="chk"${v ? ' checked' : ''}${dis}> ${esc(f.cl || '')}</label>`; break;
     case 'pct': inp = `<input id="${id}" data-k="${f.k}" data-t="pct" inputmode="decimal" value="${v === null || v === undefined || v === '' ? '' : +(num(v) * 100).toFixed(4)}"${dis}><span class="unit">%</span>`; break;
     case 'num': inp = `<input id="${id}" data-k="${f.k}" data-t="num" inputmode="decimal" value="${v === null || v === undefined ? '' : esc(v)}"${dis}>`; break;
-    case 'date': inp = `<input type="date" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 10))}"${dis}>`; break;
+    case 'date': inp = `<input type="date" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 10))}"${f.max === 'today' ? ` max="${isoDate(new Date())}"` : ''}${dis}>`; break;
     case 'dt': inp = `<input type="datetime-local" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 16))}"${dis}>`; break;
     case 'ro': inp = `<div class="ro">${f.html !== undefined ? f.html : esc(v)}</div>`; break;
     default: inp = `<input id="${id}" data-k="${f.k}" value="${esc(v)}"${f.list ? ` list="dl_${f.k}"` : ''}${dis}>` + (f.list ? `<datalist id="dl_${f.k}">${f.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : '');
@@ -1801,7 +1801,7 @@ ACT.editADV = no => {
     { k: 'date', l: 'Request date', t: 'date', ed: edM }, { k: 'po', l: 'PO no.', t: 'sel', o: openPOs().filter(p => num(p.adv) > 0 || p.no === a.po).map(p => [p.no, p.no + ' - ' + p.vendor + ' (' + pct(p.adv) + ')']), ed: edM, req: 1 },
     { k: 'amount', l: 'Amount requested (IQD)', t: 'num', ed: edM, req: 1 }, { k: 'reqBy', l: 'Requested by', t: 'text', ed: edM },
     { k: 'apprBy', l: 'Approved by (same authority as the PO)', t: 'text', ed: edM }, { k: 'remarks', l: 'Remarks', t: 'text', ed: edM },
-    { k: 'paidDate', l: 'Paid date (Accounts)', t: 'date', ed: edA }, { k: 'pvRef', l: 'PV / payment reference (Accounts)', t: 'text', ed: edA },
+    { k: 'paidDate', l: 'Paid date (Accounts)', t: 'date', max: 'today', ed: edA }, { k: 'pvRef', l: 'PV / payment reference (Accounts)', t: 'text', ed: edA },
   ], a), [(edM || edA) && { l: 'Save', cls: 'pri', fn: b => {
       const o = Object.assign({}, a); readInto(b, o);
     if (o.po) {
@@ -2121,7 +2121,7 @@ ACT.auditBill = no => {
     + '<h4>Payment computation (IQD)</h4>' + kv([['Invoice amount', fmt(b.amount), 'PO value', fmt(r.poValue)], ['Less: advance adjusted', fmt(b.advAdj), 'Received (GRN + SRN)', fmt(r.received)], ['Less: retention', fmt(r.retention), 'Billed to date on PO', fmt(r.billedToDate)], ['Less: other deductions', fmt(b.otherDed), 'Advance balance before bill', fmt(r.advBalBefore)], ['NET PAYABLE', '<b>' + fmt(r.net) + '</b>', 'Payment status', flag(r.pay)]])
     + `<h4>Checklist</h4><table class="lt"><thead><tr><th>#</th><th>Check</th><th>System result</th><th>Auditor tick</th></tr></thead><tbody>${ch.map(([t, s], i) => `<tr><td>${i + 1}</td><td>${esc(t)}</td><td>${s === 'Manual' || s === '-' ? esc(s) : flags(s)}</td><td><input type="checkbox" class="atk" data-i="${i}" ${b.checks[i] ? 'checked' : ''} ${edI ? '' : 'disabled'}></td></tr>`).join('')}</tbody></table>`
     + fields([{ k: 'audit', l: 'Audit status (Internal Auditor)', t: 'sel', o: ['Clear', 'Hold', 'Query'], ed: edI }, { k: 'auditDate', l: 'Audit date', t: 'date', ed: edI }, { k: 'auditRemarks', l: 'Auditor remarks', t: 'area', full: true, ed: edI }, { k: 'varBy', l: 'Variance approved by (Sigat / Head of Accounts)', t: 'text', ed: edI }, { k: 'varDate', l: 'Variance approval date', t: 'date', ed: edI }, { k: 'varRemarks', l: 'Variance remarks', t: 'area', full: true, ed: edI },
-      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Cash payment: the voucher or receipt reference' }], b),
+      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', max: 'today', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Cash payment: the voucher or receipt reference' }], b),
     [(edI || edA) && { l: 'Save', cls: 'pri', fn: body => {
       const o = Object.assign({}, b); readInto(body, o); o.mode = 'Cash';
       if (edI) { o.checks = {}; body.querySelectorAll('.atk').forEach(x => { o.checks[x.dataset.i] = x.checked; }); }
@@ -2541,7 +2541,7 @@ ACT.payCPV = no => {
   if (cp.paidOn) return toast('This voucher is already paid.', 'bad');
   if (!canEdit('Consolidated PV') || !may('Accounts')) return toast('Only Accounts records the payment of a consolidated PV.', 'bad');
   modal('Record payment - ' + no, `<p class="muted">Paying ${cp.bills.length} bill(s): ${esc(cp.bills.join(', '))}</p>` + fields([
-    { k: 'paidOn', l: 'Payment date (today or earlier)', t: 'date', ed: true, req: 1 }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
+    { k: 'paidOn', l: 'Payment date (today or earlier)', t: 'date', ed: true, req: 1, max: 'today' }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
     [{ l: 'Record payment', cls: 'pri', fn: body => {
       const o = { paidOn: '', paidRef: '' }; readInto(body, o);
       if (!o.paidOn) return toast('Enter the payment date.', 'bad');
