@@ -1685,6 +1685,8 @@ App.poLineCalc = el => {
   let t = 0; document.querySelectorAll('#le_pol tbody tr').forEach(x => { t += num(x.querySelector('[data-lk=qty]').value) * num(x.querySelector('[data-lk=rate]').value); });
   const tv = $('#poTotal'); if (tv) tv.textContent = fmt(t);
 };
+// Advance vouchers raised against a PO (several are allowed, up to the PO's advance %).
+const advancesOn = poNo => S.advances.filter(a => a.po === poNo);
 ACT.editPO = no => {
   const p = findPO(no), c = C.po[no];
   const locked = p.cancel || !!p.closedOn;
@@ -1711,7 +1713,7 @@ ACT.editPO = no => {
   ], p)}
   <h4>Item lines (MH-07) - at most 20 lines</h4><datalist id="dl_items">${S.items.map(i => `<option value="${esc(i.code + ' - ' + i.name)}">`).join('')}</datalist>${linesEditor('pol', lineCols, p.lines, edL, 20)}
   <h4>Payment terms</h4>${fields([
-    { k: 'mode', l: 'Payment mode (cash only)', t: 'sel', o: ['Cash'], ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH },
+    { k: 'mode', l: 'Payment mode (cash only)', t: 'sel', o: ['Cash'], ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH && !advancesOn(p.no).length, hint: advancesOn(p.no).length ? 'Locked: advance vouchers exist for this PO' : '' },
     { k: 'del', l: 'On delivery / completion', t: 'pct', ed: edH }, { k: 'ret', l: 'Retention', t: 'pct', ed: edH },
     { k: 'retDays', l: 'Retention released after (days)', t: 'num', ed: edH }, { k: 'credit', l: 'Credit days after bill', t: 'num', ed: edH },
     { k: 'other', l: 'Other payment terms', t: 'area', full: true, ed: edH },
@@ -1733,8 +1735,9 @@ ACT.editPO = no => {
   <div class="sum">Advances paid ${fmt(c.advPaid)} &middot; Received (GRN+SRN) ${fmt(c.received)} &middot; Billed ${fmt(c.billed)} &middot; Bills paid (net) ${fmt(c.paidNet)} &middot; Balance to receive ${fmt(c.balance)}</div>`;
   modal('PO ' + no, body, [
     (edH || edL || edB) && { l: 'Save', cls: 'pri', fn: b => {
-      const before = JSON.stringify(p), wasCancel = p.cancel;
+      const before = JSON.stringify(p), wasCancel = p.cancel, oldAdv = num(p.adv);
       readInto(b, p); p.mode = 'Cash';
+      if (advancesOn(p.no).length && Math.abs(num(p.adv) - oldAdv) > 1e-9) { p.adv = oldAdv; return toast('Advance % in PO cannot be modified once an advance voucher has been generated against that PO.', 'bad'); }
       if (edH) p.quotes = [0, 1, 2].map(i => ({ v: $('#qv' + i).value, a: numOrNull($('#qa' + i).value) })).filter(x => x.v || x.a);
       if (edL) { const ls = readLines('pol', ['qty', 'rate']); if (ls.length > 20) return toast('At most 20 lines on one PO.', 'bad'); p.lines = ls.map(l => ({ item: resolveItemText(l.item, p, true), qty: num(l.qty), rate: num(l.rate), spec: l.spec || '' })); }
       if (p.vendor && (vendor(p.vendor) || {}).avl !== 'Y' && !p.cancel) return toast('This vendor is not approved (AVL). Approve it on the Vendors page before it can be used on a PO.', 'bad');
@@ -1797,7 +1800,15 @@ ACT.editADV = no => {
     { k: 'apprBy', l: 'Approved by (same authority as the PO)', t: 'text', ed: edM }, { k: 'remarks', l: 'Remarks', t: 'text', ed: edM },
     { k: 'paidDate', l: 'Paid date (Accounts)', t: 'date', ed: edA }, { k: 'pvRef', l: 'PV / payment reference (Accounts)', t: 'text', ed: edA },
   ], a), [(edM || edA) && { l: 'Save', cls: 'pri', fn: b => {
-    const o = Object.assign({}, a); readInto(b, o);
+      const o = Object.assign({}, a); readInto(b, o);
+    if (o.po) {
+      const pp = findPO(o.po), ppc = pp && C.po[pp.no];
+        if (pp && ppc) {
+          const others = S.advances.filter(x => x.po === pp.no && x.no !== a.no).reduce((s, x) => s + num(x.amount), 0);
+          const limit = Math.max(0, ppc.value * num(pp.adv) - others);
+          if (num(o.amount) > limit + 0.5) return toast('Too much advance for ' + pp.no + ': the PO allows ' + pct(pp.adv) + ' of ' + fmt(ppc.value) + ' = ' + fmt(ppc.value * num(pp.adv)) + ', of which ' + fmt(others) + ' is already advanced. Up to ' + fmt(limit) + ' can be requested now.', 'bad');
+        }
+      }
     if (edA && o.paidDate && !a.paidDate) { recalc(); const cc = C.adv[no]; if (cc.check !== 'OK' && !/Approval/.test(cc.check)) return toast('Not paid: ' + cc.check, 'bad'); }
     Object.assign(a, o); commit('Advance updated', no); render(); ACT.editADV(no);
   } }, canSee('Advance Print') && { l: 'Print / export (MH-10)', fn: () => printADV(no) }]);
