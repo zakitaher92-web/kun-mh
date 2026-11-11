@@ -652,7 +652,7 @@ function recalc() {
       return { i, item: l.item, qty: num(l.qty), rate: num(l.rate), amount, mpl: m ? m.rate : null, diff, price, check, type: itemType(l.item), unit: (item(l.item) || {}).unit || '' };
     });
     const value = lines.reduce((a, l) => a + l.amount, 0);
-    C.po[p.no] = { lines, value, recQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
+    C.po[p.no] = { lines, value, recQty: {}, billedQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
   });
 
   // GRN rows
@@ -738,6 +738,7 @@ function recalc() {
     const r = { vendor: p ? p.vendor : b.vendor, line: p ? p.line : b.line, poValue: pc ? pc.value : null, received: pc ? pc.received : null, retPct: p ? num(p.ret) : 0 };
     r.billedToDate = p ? (billedSoFar[p.no] || 0) + amt : null;
     if (p) billedSoFar[p.no] = r.billedToDate;
+    if (pc && Array.isArray(b.items)) b.items.forEach(it => { pc.billedQty[it.item] = (pc.billedQty[it.item] || 0) + num(it.qty); });
     r.retention = amt * r.retPct;
     r.advBalBefore = p ? pc.advPaid - (advAdjSoFar[p.no] || 0) : 0;
     if (p) advAdjSoFar[p.no] = (advAdjSoFar[p.no] || 0) + adj;
@@ -1732,7 +1733,8 @@ ACT.editPO = no => {
     { k: 'cancel', l: 'Cancel', t: 'chk', cl: 'Cancelled (number kept, row never deleted)', ed: edH },
     { k: 'remarks', l: 'Remarks / reason for cancellation', t: 'area', full: true, ed: edH },
   ], p)}
-  <div class="sum">Advances paid ${fmt(c.advPaid)} &middot; Received (GRN+SRN) ${fmt(c.received)} &middot; Billed ${fmt(c.billed)} &middot; Bills paid (net) ${fmt(c.paidNet)} &middot; Balance to receive ${fmt(c.balance)}</div>`;
+  <div class="sum">Advances paid ${fmt(c.advPaid)} &middot; Received (GRN+SRN) ${fmt(c.received)} &middot; Billed ${fmt(c.billed)} &middot; Bills paid (net) ${fmt(c.paidNet)} &middot; Balance to receive ${fmt(c.balance)}</div>`
+  + `<h4>Quantity status by item</h4><div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th class="n">Ordered</th><th class="n">Accepted (GRN + SRN)</th><th class="n">Billed</th><th class="n">Accepted, not billed</th><th class="n">Not yet received</th></tr></thead><tbody>${c.lines.filter(l => l.item).map(l => { const acc = c.recQty[l.item] || 0, bil = c.billedQty[l.item] || 0; return `<tr><td>${esc(l.item)}</td><td>${esc(itemName(l.item))}</td><td class="n">${fmtQ(l.qty)}</td><td class="n">${fmtQ(acc)}</td><td class="n">${fmtQ(bil)}</td><td class="n">${fmtQ(acc - bil)}</td><td class="n">${fmtQ(Math.max(0, l.qty - acc))}</td></tr>`; }).join('')}</tbody></table></div>`;
   modal('PO ' + no, body, [
     (edH || edL || edB) && { l: 'Save', cls: 'pri', fn: b => {
       const before = JSON.stringify(p), wasCancel = p.cancel, oldAdv = num(p.adv);
@@ -1955,13 +1957,32 @@ ACT.newBILL = async () => {
   S.bills.push(b); commit('Bill entry number issued', b.no); render(); ACT.editBILL(b.no);
 };
 // Advance adjustable on a bill: PO advance % x bill amount, capped at the PAID advance vouchers on this PO not yet adjusted by other bills.
-// Accepted value on the PO (GRN + SRN) not yet billed by other bills: the most a bill on this PO may claim.
-function billCap(b) {
+// Accepted quantity of an item on the PO (GRN + SRN) not yet billed by other bills: the most this bill may claim.
+function itemCap(b, item) {
   const p = findPO(b.po), pc = p && C.po[p.no];
-  if (!p || !pc) return null;
-  const billed = S.bills.filter(x => x.po === p.no && x.no !== b.no).reduce((s, x) => s + num(x.amount), 0);
-  return Math.max(0, Math.round(pc.received - billed));
+  if (!pc) return 0;
+  const billedOther = S.bills.filter(x => x.po === p.no && x.no !== b.no).reduce((s, x) => s + (x.items || []).filter(it => it.item === item).reduce((a, it) => a + num(it.qty), 0), 0);
+  return Math.max(0, (pc.recQty[item] || 0) - billedOther);
 }
+function billItemsHtml(b, p, edM) {
+  const pc = C.po[p.no];
+  const rows = pc.lines.filter(l => l.item).map(l => {
+    const acc = pc.recQty[l.item] || 0, cap = itemCap(b, l.item), mine = (b.items || []).find(x => x.item === l.item);
+    if (acc <= 0 && !mine) return null;
+    const q = mine ? mine.qty : cap;
+    return '<tr><td>' + esc(l.item) + '</td><td>' + esc(itemName(l.item)) + '</td><td>' + esc(l.unit) + '</td>' +
+      '<td class="n">' + fmtQ(acc) + '</td><td class="n">' + fmtQ(acc - cap) + '</td><td class="n"><b>' + fmtQ(cap) + '</b></td><td class="n">' + fmt(l.rate) + '</td>' +
+      '<td class="n"><input type="number" class="bq" data-item="' + esc(l.item) + '" data-rate="' + l.rate + '" value="' + q + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.billQty()" style="width:90px"></td>' +
+      '<td class="n">' + fmt(q * l.rate) + '</td></tr>';
+  }).filter(Boolean).join('');
+  return '<h4>Items billed (accepted quantities only)</h4>' + (rows
+    ? '<div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="n">Accepted (GRN + SRN)</th><th class="n">Billed on other bills</th><th class="n">Available to bill</th><th class="n">Rate</th><th class="n">Qty to bill</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+    : '<p class="flag bad">No accepted goods or services on this PO that are not yet billed. Record the GRN / SRN first.</p>');
+}
+App.billQty = () => {
+  const t = [...document.querySelectorAll('#modal .bq')].reduce((s, el) => s + Math.round(num(el.value) * num(el.dataset.rate)), 0);
+  const a = document.querySelector('#f_amount'); if (a) a.value = t;
+};
 function advBal(b) {
   const p = findPO(b.po), pc = p && C.po[p.no];
   if (!p || !pc) return 0;
@@ -2004,18 +2025,22 @@ function priceHistoryHtml(p) {
 }
 ACT.editBILL = no => {
   const b = S.bills.find(x => x.no === no), r = C.bill[no], p = b.po ? findPO(b.po) : null;
+  if (p && b.invoicedAmount == null) b.invoicedAmount = b.amount;
   const paid = !!b.payDate;
   const edM = canEdit('Bills') && may('Maintenance Masool') && !paid && b.audit !== 'Clear';
   const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no)) : [];
   const refs = (b.refs || '').split(/;\s*/).filter(Boolean);
   if (p && num(p.adv) > 0) setTimeout(() => { const amtEl = $('#f_amount'), advEl = $('#f_advAdj'); if (amtEl && advEl) amtEl.addEventListener('input', () => { advEl.value = advOnPO(b, numOrNull(amtEl.value)); }); }, 0);
+  if (p && edM) setTimeout(() => App.billQty(), 0);
   modal('Bill ' + no, `<div class="sum">${flag(r.pay)} Net payable <b>${fmt(r.net)}</b> IQD &middot; 3-way match ${flags(r.match)}</div>
     ${b.audit === 'Clear' && !paid ? '<p class="note">Cleared by the Internal Auditor - the bill entry is locked. Accounts records the payment.</p>' : ''}${paid ? '<p class="note">Paid - locked.</p>' : ''}
     <div class="grid"><div class="fld"><label>PO no. (blank for a purchase below ${fmt(S.settings.poFrom)} IQD)</label><select data-doc="${esc(no)}" onchange="App.billPO(this)" ${edM ? '' : 'disabled'}>${opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po)}</select></div></div>`
     + (p ? priceHistoryHtml(p) : '')
+    + (p ? billItemsHtml(b, p, edM) : '')
     + fields([
       { k: 'date', l: 'Date submitted to Accounts', t: 'date', ed: edM }, { k: 'invNo', l: 'Vendor invoice no.', t: 'text', ed: edM, req: 1 }, { k: 'invDate', l: 'Invoice date', t: 'date', ed: edM },
-      { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1, hint: p && edM ? 'Accepted on GRN / SRN and not yet billed: ' + fmt(billCap(b)) + '. A higher invoice is reduced to this on save (rejected or undelivered goods are not paid).' : '' },
+      { k: 'amount', l: p ? 'Bill amount on accepted quantities (IQD)' : 'Invoice amount (IQD)', t: 'num', ed: edM && !p, req: 1, hint: p ? 'Calculated from the quantities below. Rejected or undelivered goods are not paid.' : '' },
+      ...(p ? [{ k: 'invoicedAmount', l: 'Vendor invoice amount (IQD)', t: 'num', ed: edM, hint: 'As invoiced by the vendor - for reference against the bill amount.' }] : []),
       { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `Filled from the paid advance vouchers on this PO (${pct(p.adv)} of bill, max balance ${fmt(advBal(b))}). <a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Recalculate</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
     ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }])
@@ -2026,10 +2051,16 @@ ACT.editBILL = no => {
     [edM && { l: 'Save', cls: 'pri', fn: body => {
       readInto(body, b);
       if (p) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
-      if (p && billCap(b) !== null && num(b.amount) > billCap(b) + 0.5) {
-        const cap = billCap(b), invoiced = num(b.amount);
-        b.invoicedAmount = invoiced; b.amount = cap;
-        toast('Bill reduced from ' + fmt(invoiced) + ' to ' + fmt(cap) + ' - the accepted value on GRN / SRN. Ask the vendor for a corrected invoice or credit note for ' + fmt(invoiced - cap) + '.', 'bad');
+      if (p) {
+        const reduced = [], items = [];
+        body.querySelectorAll('.bq').forEach(el => {
+          const it = el.dataset.item, asked = num(el.value), cap = itemCap(b, it), rate = num(el.dataset.rate);
+          const q = Math.max(0, Math.min(asked, cap));
+          if (asked > cap + 1e-9) reduced.push(it + ': ' + fmtQ(asked) + ' asked, ' + fmtQ(cap) + ' accepted and not yet billed');
+          if (q > 0) items.push({ item: it, qty: q, rate, amount: Math.round(q * rate) });
+        });
+        b.items = items; b.amount = items.reduce((s, x) => s + x.amount, 0);
+        if (reduced.length) toast('Quantity reduced to accepted: ' + reduced.join('; ') + '. Ask the vendor for a corrected invoice or credit note.', 'bad');
       }
       if (!b.po && num(b.amount) >= num(S.settings.poFrom)) toast('No PO for a bill of ' + fmt(S.settings.poFrom) + ' IQD or more - this voucher will not be paid. Never split a requirement into several bills.', 'bad');
       commit('Bill saved', no); render(); ACT.editBILL(no);
