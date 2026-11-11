@@ -484,6 +484,7 @@ const fmt = (v, d = 0) => (v === null || v === undefined || v === '' || isNaN(v)
 const fmtQ = v => (v === null || v === undefined || v === '') ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const pct = (v, d = 0) => (v === null || v === undefined || isNaN(v)) ? '' : (v * 100).toFixed(d) + '%';
 const pad4 = n => String(n).padStart(4, '0');
+const futureDate = d => !!d && d > isoDate(new Date());
 const isoDate = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
 const isoDT = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); };
 const nowDT = () => isoDT(new Date());
@@ -1811,6 +1812,7 @@ ACT.editADV = no => {
           if (num(o.amount) > limit + 0.5) return toast('Too much advance for ' + pp.no + ': the PO allows ' + pct(pp.adv) + ' of ' + fmt(ppc.value) + ' = ' + fmt(ppc.value * num(pp.adv)) + ', of which ' + fmt(others) + ' is already advanced. Up to ' + fmt(limit) + ' can be requested now.', 'bad');
         }
       }
+    if (edA && futureDate(o.paidDate)) return toast('The paid date cannot be in the future. Enter today or an earlier date.', 'bad');
     if (edA && o.paidDate && !a.paidDate) { recalc(); const cc = C.adv[no]; if (cc.check !== 'OK' && !/Approval/.test(cc.check)) return toast('Not paid: ' + cc.check, 'bad'); }
     Object.assign(a, o); commit('Advance updated', no); render(); ACT.editADV(no);
   } }, canSee('Advance Print') && { l: 'Print / export (MH-10)', fn: () => printADV(no) }]);
@@ -2128,6 +2130,7 @@ ACT.auditBill = no => {
       if (edI && o.audit && o.audit !== 'Clear' && !o.auditRemarks) return toast('Give remarks for Hold / Query - the bill goes back to the Masool.', 'bad');
       if (edI && o.audit && !o.auditDate) o.auditDate = isoDate(new Date());
       if (edA && o.payDate && !o.payRef) return toast('Record the payment reference.', 'bad');
+      if (edA && futureDate(o.payDate)) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
       const act = o.audit !== b.audit ? 'Bill audit: ' + o.audit : o.payDate && !b.payDate ? 'Bill paid' : 'Bill audit / payment updated';
       Object.assign(b, o); commit(act, no); render(); ACT.auditBill(no);
     } }, { l: 'Print / export (MH-16)', fn: () => printPack(no) }], { wide: true });
@@ -2538,11 +2541,11 @@ ACT.payCPV = no => {
   if (cp.paidOn) return toast('This voucher is already paid.', 'bad');
   if (!canEdit('Consolidated PV') || !may('Accounts')) return toast('Only Accounts records the payment of a consolidated PV.', 'bad');
   modal('Record payment - ' + no, `<p class="muted">Paying ${cp.bills.length} bill(s): ${esc(cp.bills.join(', '))}</p>` + fields([
-    { k: 'paidOn', l: 'Payment date', t: 'date', ed: true, req: 1 }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
+    { k: 'paidOn', l: 'Payment date (today or earlier)', t: 'date', ed: true, req: 1 }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
     [{ l: 'Record payment', cls: 'pri', fn: body => {
       const o = { paidOn: '', paidRef: '' }; readInto(body, o);
       if (!o.paidOn) return toast('Enter the payment date.', 'bad');
-      if (o.paidOn > isoDate(new Date())) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
+      if (futureDate(o.paidOn)) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
       cp.paidOn = o.paidOn; cp.paidRef = o.paidRef;
       cp.bills.forEach(n => { const b = S.bills.find(x => x.no === n); if (b) { b.payDate = o.paidOn; b.payRef = 'Cash - ' + no + (o.paidRef ? ' ' + o.paidRef : ''); b.pv = no; } });
       closeModal(); commit('Consolidated PV paid', no); render();
