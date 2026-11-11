@@ -1955,6 +1955,13 @@ ACT.newBILL = async () => {
   S.bills.push(b); commit('Bill entry number issued', b.no); render(); ACT.editBILL(b.no);
 };
 // Advance adjustable on a bill: PO advance % x bill amount, capped at the PAID advance vouchers on this PO not yet adjusted by other bills.
+// Accepted value on the PO (GRN + SRN) not yet billed by other bills: the most a bill on this PO may claim.
+function billCap(b) {
+  const p = findPO(b.po), pc = p && C.po[p.no];
+  if (!p || !pc) return null;
+  const billed = S.bills.filter(x => x.po === p.no && x.no !== b.no).reduce((s, x) => s + num(x.amount), 0);
+  return Math.max(0, Math.round(pc.received - billed));
+}
 function advBal(b) {
   const p = findPO(b.po), pc = p && C.po[p.no];
   if (!p || !pc) return 0;
@@ -2008,7 +2015,7 @@ ACT.editBILL = no => {
     + (p ? priceHistoryHtml(p) : '')
     + fields([
       { k: 'date', l: 'Date submitted to Accounts', t: 'date', ed: edM }, { k: 'invNo', l: 'Vendor invoice no.', t: 'text', ed: edM, req: 1 }, { k: 'invDate', l: 'Invoice date', t: 'date', ed: edM },
-      { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1 },
+      { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1, hint: p && edM ? 'Accepted on GRN / SRN and not yet billed: ' + fmt(billCap(b)) + '. A higher invoice is reduced to this on save (rejected or undelivered goods are not paid).' : '' },
       { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `Filled from the paid advance vouchers on this PO (${pct(p.adv)} of bill, max balance ${fmt(advBal(b))}). <a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Recalculate</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
     ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }])
@@ -2019,6 +2026,11 @@ ACT.editBILL = no => {
     [edM && { l: 'Save', cls: 'pri', fn: body => {
       readInto(body, b);
       if (p) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      if (p && billCap(b) !== null && num(b.amount) > billCap(b) + 0.5) {
+        const cap = billCap(b), invoiced = num(b.amount);
+        b.invoicedAmount = invoiced; b.amount = cap;
+        toast('Bill reduced from ' + fmt(invoiced) + ' to ' + fmt(cap) + ' - the accepted value on GRN / SRN. Ask the vendor for a corrected invoice or credit note for ' + fmt(invoiced - cap) + '.', 'bad');
+      }
       if (!b.po && num(b.amount) >= num(S.settings.poFrom)) toast('No PO for a bill of ' + fmt(S.settings.poFrom) + ' IQD or more - this voucher will not be paid. Never split a requirement into several bills.', 'bad');
       commit('Bill saved', no); render(); ACT.editBILL(no);
     } },
@@ -2499,6 +2511,7 @@ ACT.payCPV = no => {
     [{ l: 'Record payment', cls: 'pri', fn: body => {
       const o = { paidOn: '', paidRef: '' }; readInto(body, o);
       if (!o.paidOn) return toast('Enter the payment date.', 'bad');
+      if (o.paidOn > isoDate(new Date())) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
       cp.paidOn = o.paidOn; cp.paidRef = o.paidRef;
       cp.bills.forEach(n => { const b = S.bills.find(x => x.no === n); if (b) { b.payDate = o.paidOn; b.payRef = 'Cash - ' + no + (o.paidRef ? ' ' + o.paidRef : ''); b.pv = no; } });
       closeModal(); commit('Consolidated PV paid', no); render();
