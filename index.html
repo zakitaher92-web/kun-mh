@@ -1979,9 +1979,9 @@ function billItemsHtml(b, p, edM) {
     if (acc <= 0 && !mine) return null;
     const q = mine ? mine.qty : cap;
     return '<tr><td>' + esc(l.item) + '</td><td>' + esc(itemName(l.item)) + '</td><td>' + esc(l.unit) + '</td>' +
-      '<td class="n">' + fmtQ(acc) + '</td><td class="n">' + fmtQ(acc - cap) + '</td><td class="n"><b>' + fmtQ(cap) + '</b></td><td class="n">' + fmt(l.rate) + '</td>' +
+      '<td class="n">' + fmtQ(acc) + '</td><td class="n">' + fmtQ(acc - cap) + '</td><td class="n"><b>' + fmtQ(cap) + '</b></td><td class="n"><input type="number" class="brt" data-item="' + esc(l.item) + '" data-po-rate="' + l.rate + '" value="' + (mine ? mine.rate : l.rate) + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.billQty()" style="width:100px"></td>' +
       '<td class="n"><input type="number" class="bq" data-item="' + esc(l.item) + '" data-rate="' + l.rate + '" value="' + q + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.billQty()" style="width:90px"></td>' +
-      '<td class="n">' + fmt(q * l.rate) + '</td></tr>';
+      '<td class="n" data-amt="' + esc(l.item) + '">' + fmt(q * (mine ? mine.rate : l.rate)) + '</td></tr>';
   }).filter(Boolean).join('');
   return '<h4>Items billed (accepted quantities only)</h4>' + (rows
     ? '<div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="n">Accepted (GRN + SRN)</th><th class="n">Billed on other bills</th><th class="n">Available to bill</th><th class="n">Rate</th><th class="n">Qty to bill</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
@@ -1989,7 +1989,11 @@ function billItemsHtml(b, p, edM) {
 }
 App.tickAll = on => { document.querySelectorAll('#modal .atk').forEach(c => { if (!c.disabled) c.checked = on; }); };
 App.billQty = () => {
-  const t = [...document.querySelectorAll('#modal .bq')].reduce((s, el) => s + Math.round(num(el.value) * num(el.dataset.rate)), 0);
+  let t = 0;
+  document.querySelectorAll('#modal .bq').forEach(el => {
+    const rate = num(document.querySelector('#modal .brt[data-item="' + el.dataset.item + '"]').value), amt = Math.round(num(el.value) * rate);
+    t += amt; const cell = document.querySelector('#modal [data-amt="' + el.dataset.item + '"]'); if (cell) cell.textContent = fmt(amt);
+  });
   const a = document.querySelector('#f_amount'); if (a) a.value = t;
 };
 // Value of GRNs received without a PO: accepted quantity x MPL rate.
@@ -2069,14 +2073,17 @@ ACT.editBILL = no => {
       if (p || refsAvail.length) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
       if (!p && b.refs) b.amount = noPoGrnValue(b.refs);
       if (p) {
-        const reduced = [], items = [];
+        const reduced = [], items = [], rateChanged = [];
         body.querySelectorAll('.bq').forEach(el => {
-          const it = el.dataset.item, asked = num(el.value), cap = itemCap(b, it), rate = num(el.dataset.rate);
+          const it = el.dataset.item, asked = num(el.value), cap = itemCap(b, it);
+          const rEl = body.querySelector('.brt[data-item="' + it + '"]'), rate = rEl ? num(rEl.value) : num(el.dataset.rate);
+          if (rEl && Math.abs(rate - num(rEl.dataset.poRate)) > 0.5) rateChanged.push(it + ' ' + fmt(rate) + ' (PO ' + fmt(num(rEl.dataset.poRate)) + ')');
           const q = Math.max(0, Math.min(asked, cap));
           if (asked > cap + 1e-9) reduced.push(it + ': ' + fmtQ(asked) + ' asked, ' + fmtQ(cap) + ' accepted and not yet billed');
           if (q > 0) items.push({ item: it, qty: q, rate, amount: Math.round(q * rate) });
         });
         b.items = items; b.amount = items.reduce((s, x) => s + x.amount, 0);
+        if (rateChanged.length) toast('Rate differs from the PO: ' + rateChanged.join('; ') + '. Audit will check it against the MPL.', 'bad');
         if (reduced.length) toast('Quantity reduced to accepted: ' + reduced.join('; ') + '. Ask the vendor for a corrected invoice or credit note.', 'bad');
       }
       if (!b.po && num(b.amount) >= num(S.settings.poFrom)) toast('No PO for a bill of ' + fmt(S.settings.poFrom) + ' IQD or more - this voucher will not be paid. Never split a requirement into several bills.', 'bad');
