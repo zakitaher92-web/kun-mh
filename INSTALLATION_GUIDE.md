@@ -1,5 +1,7 @@
 # KUN Maintenance & Housekeeping - Installation Guide (Windows Server 2016 with IIS)
 
+This guide is for **version 2.2.0** of the app (the package folder that contains `setup\`, `server\` and `index.html`).
+
 The app runs on one Windows Server. Its records are stored in a PostgreSQL 16 database on the same server. **IIS** (the web server built into Windows) receives the requests from other computers on the office network and passes them to the app. Other people open the app in their browser; they do not install anything.
 
 ```
@@ -36,7 +38,7 @@ Set-up takes about one hour the first time. Node.js and the PostgreSQL programs 
 
 - You need an administrator account on the server, and the server must be on the office network.
 - Use Node.js **22 LTS**. It is the version known to run well on Windows Server 2016.
-- Copy the app folder `kun-mh` to a permanent place on the server, for example `C:\KUN\kun-mh`. Do not run it from the Downloads folder or from a network share.
+- Copy the app folder `kun-mh` to a permanent place on the server, for example `C:\KUN\kun-mh`. Do not run it from the Downloads folder or from a network share. The folder holds `setup\`, `server\`, `index.html` and the other files of the package. The Vercel-only files (`api\`, `vercel.json`) are not used on the office server and can be left out.
 
 ---
 
@@ -97,6 +99,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 - Steps 1, 7 and `check-access` are safe to repeat.
 - Steps 3 and 4 ask you to type passwords. Nothing is shown while you type; that is normal.
 - **Step 3** asks you to choose a password for the `postgres` user of the **KUN MH** database. This is not the Billing app's password. Then it asks for a password for the app database user `kunmh`. Write both down.
+- **Step 4** writes `server\.env` with the port and database settings only. It does not set `DATA_MODE`, so the office server uses the original document layout (`kv_docs`). Keep it that way unless the database has been migrated first (Part 10, section A).
 - **Step 5** asks for an email, a name and a password (at least 8 characters) for each person. Give each person their password **in person**.
 - **Step 7** asks these questions:
   1. **Which computers may open the app.** Press Enter for *LocalSubnet* (computers on the same network as the server). Type one or more ranges separated by commas, such as `10.10.0.0/16,10.20.0.0/16`, if the office uses several networks. Ask IT if you are not sure.
@@ -557,3 +560,5 @@ The hosted database can run in `kv` mode (documents in `kv_docs`, the original l
 - [ ] Step 8 made the first backup
 - [ ] The server was restarted once, and the app and database came back by themselves
 - [ ] Existing installation only: the upgrade checklist in Part 7 is complete
+- [ ] Version 2.2.0 checked: the screens listed in Part 10, section A, step 6 behave as described
+- [ ] `server\.env` does not set `DATA_MODE=tables` (unless the database was migrated, Part 10, section C)
