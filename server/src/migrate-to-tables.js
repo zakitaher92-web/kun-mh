@@ -263,7 +263,8 @@ async function main() {
   const report = { mode: APPLY ? 'apply' : 'dry-run', target, started: new Date().toISOString(), counts: {}, checks: [], warnings: [], skipped: {} };
   if (APPLY && CONFIRM !== target) {
     console.error(`--apply needs --confirm-target ${target} (the target shown above). Nothing was changed.`);
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
   console.log(`Target: ${target}  mode: ${report.mode}`);
   const client = new Client(cfg);
@@ -297,11 +298,11 @@ async function main() {
   report.finished = report.finished || new Date().toISOString();
   console.log(JSON.stringify({ status: report.status, counts: report.counts, failedChecks: report.checks.filter(c => !c.ok), warnings: report.warnings.length, skipped: report.skipped }, null, 2));
   if (REPORT_FILE) fs.writeFileSync(REPORT_FILE, JSON.stringify(report, null, 2));
-  process.exit(ok ? 0 : 1);
+  process.exitCode = ok ? 0 : 1;   // not process.exit(): it can cut off output when stdout is a pipe
 }
 
 if (require.main === module) {
-  main().catch(e => { console.error(e); process.exit(1); });
+  main().catch(e => { console.error(e); process.exitCode = 1; });
 }
 
 module.exports = { buildPlan, REGISTERS, TABLES, sid, canonStr, targetName };
