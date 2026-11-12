@@ -680,7 +680,7 @@ function recalc() {
       if (!g.by) flags.push('Received by missing');
       const rate = pl ? pl.rate : 0, val = acc * rate;
       if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + acc; pc.received += val; }
-      C.grn.push({ g, l, i, vendor: p ? p.vendor : '', poQty: pl ? pl.qty : null, rate, val, rej, cum: cumAcc[key], bal: pl ? pl.qty - cumAcc[key] : null, line: p ? p.line : '', mk: mkey(g.date), check: flags.length ? flags.join('; ') : 'OK' });
+      C.grn.push({ g, l, i, vendor: p ? p.vendor : (g.vendor || ''), poQty: pl ? pl.qty : null, rate, val, rej, cum: cumAcc[key], bal: pl ? pl.qty - cumAcc[key] : null, line: p ? p.line : '', mk: mkey(g.date), check: flags.length ? flags.join('; ') : 'OK' });
     });
   });
 
@@ -1062,13 +1062,26 @@ ACT.exceptionList = () => {
 };
 function homeView() { return ['dashboard', 'desk', 'po', 'grn', 'bills', 'issues', 'laundry', 'guide'].find(v => VIEWS[v] && canSee(VIEWS[v].module)) || 'guide'; }
 
+// Keyboard focus survives a redraw: remember the menu item (or element with an id) that had focus and put it back.
+function focusMark() {
+  const el = document.activeElement; if (!el || !el.closest) return null;
+  const nav = el.closest('#nav a[data-id]'); if (nav) return { nav: nav.dataset.id };
+  return el.id && el.closest('#app') ? { id: el.id } : null;
+}
+function focusRestore(m) {
+  if (!m || document.querySelector('[data-autofocus]')) return;
+  const el = m.nav ? document.querySelector('#nav a[data-id="' + m.nav + '"]') : document.getElementById(m.id);
+  if (el) el.focus({ preventScroll: true });
+}
 function render() {
   const v = VIEWS[VIEW];
+  const mark = focusMark();
   $('#app').innerHTML = shell();
   const main = $('#main');
   try { main.innerHTML = `<div class="vhead"><div>${HIST.length ? '<button class="btn ghost sm" data-act="back" title="Back to the previous page (Esc)">&larr; Back</button> ' : ''}<span class="fmt">${esc(v.fmtNo)}</span><h1>${esc(v.title)}</h1></div><div class="vtools" id="vtools"></div></div>` + v.render(); }
   catch (e) { console.error(e); main.innerHTML = `<div class="card bad">Something went wrong showing this page: ${esc(e.message)}</div>`; }
   document.querySelectorAll('[data-autofocus]').forEach(x => x.focus());
+  focusRestore(mark);
   window.scrollTo(0, 0);
 }
 function shell() {
@@ -1854,7 +1867,18 @@ ACT.newGRN = async () => {
   const g = { no, date: isoDate(new Date()), po: '', challan: '', by: U.name, remarks: '', lines: [] };
   S.grns.push(g); commit('GRN number issued', g.no); render(); ACT.editGRN(g.no);
 };
-App.grnPO = sel => { const g = S.grns.find(x => x.no === sel.dataset.doc); g.noPo = sel.value === '__NOPO__'; g.po = g.noPo ? '' : sel.value; const lines = readLines('grl', ['recd', 'acc']); g.lines = lines; ACT.editGRN(g.no); };
+// Value of a receipt without a PO: accepted quantity x MPL rate (the basis of the PO-limit rule).
+const noPoValue = lines => lines.reduce((a, l) => { const m = mplRate(l.item, ''); return a + num(l.acc) * (m ? m.rate : 0); }, 0);
+App.grnPO = sel => {
+  const g = S.grns.find(x => x.no === sel.dataset.doc), lines = readLines('grl', ['recd', 'acc']);
+  g.lines = lines;
+  if (sel.value === '__NOPO__' && noPoValue(lines) >= num(S.settings.poFrom)) {
+    toast('Not allowed: these goods are worth ' + fmt(noPoValue(lines)) + ' IQD, at or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD). Choose an approved PO.', 'bad');
+    return ACT.editGRN(g.no);
+  }
+  g.noPo = sel.value === '__NOPO__'; g.po = g.noPo ? '' : sel.value;
+  ACT.editGRN(g.no);
+};
 App.srnPO = sel => { const s = S.srns.find(x => x.no === sel.dataset.doc); s.po = sel.value; s.lines = readLines('srl', ['qty']); ACT.editSRN(s.no); };
 ACT.newItemFromGRN = () => ACT.editItem('');
 ACT.editGRN = no => {
@@ -1866,7 +1890,7 @@ ACT.editGRN = no => {
   const rows = C.grn.filter(r => r.g.no === no);
   modal('GRN ' + no, (billed ? '<p class="note">A bill quotes this GRN - it can no longer be changed.</p>' : '') + `<div class="grid"><div class="fld"><label>PO no. (approved POs only) <i>*</i></label><select data-doc="${esc(no)}" onchange="App.grnPO(this)" ${ed ? '' : 'disabled'}>${opts([['__NOPO__', 'No PO - purchase below the PO limit (reason and approver needed)']].concat(openPOs().filter(x => x.approvedBy || x.no === g.po).map(x => [x.no, x.no + ' - ' + x.vendor])), g.noPo ? '__NOPO__' : g.po)}</select></div></div>`
     + fields([{ k: 'date', l: 'Date received', t: 'date', ed }, { k: 'challan', l: 'Challan / delivery note no.', t: 'text', ed }, { k: 'by', l: 'Received by (GRN Officer)', t: 'text', ed }, { k: 'remarks', l: 'Remarks / reason for rejection', t: 'text', ed }], g)
-    + (p ? `<h4>PO lines - ${esc(p.vendor)}</h4>${poLinesHint(p, 'stock')}` : g.noPo ? fields([{ k: 'noPoReason', l: 'Reason for receiving without a PO', t: 'text', ed, req: 1 }, { k: 'noPoBy', l: 'Approved by (Maintenance Masool)', t: 'text', ed, req: 1 }], g) : '<p class="note warn">No PO - no GRN. Choose the approved PO first.</p>')
+    + (p ? `<h4>PO lines - ${esc(p.vendor)}</h4>${poLinesHint(p, 'stock')}` : g.noPo ? fields([{ k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorPairs(), ed, req: 1 }, { k: 'noPoReason', l: 'Reason for receiving without a PO', t: 'text', ed, req: 1 }, { k: 'noPoBy', l: 'Approved by (Maintenance Masool)', t: 'text', ed, req: 1 }], g) + (noPoValue(g.lines) >= num(S.settings.poFrom) ? '<p class="flag bad">At or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD): "No PO" is not allowed. Choose an approved PO.</p>' : '') : '<p class="note warn">No PO - no GRN. Choose the approved PO first.</p>')
     + `<h4>Items received</h4>` + (ed ? `<p><button class="btn" type="button" data-act="newItemFromGRN">+ New item (not in the list)</button> <span class="small">Save the item, then reopen this GRN to pick it.</span></p>` : '') + linesEditor('grl', [
       { k: 'item', h: 'Item', t: 'sel', o: pl, w: 220 }, { k: 'recd', h: 'Qty received', t: 'num', w: 80 }, { k: 'acc', h: 'Qty accepted', t: 'num', w: 80 },
       { k: 'remarks', h: 'Remarks', t: 'text', w: 140 }, { h: 'Check', t: 'ro', ro: (l, i) => rows[i] ? flags(rows[i].check) : '' }], g.lines, ed && (!!p || !!g.noPo), 20),
@@ -1874,16 +1898,17 @@ ACT.editGRN = no => {
       readInto(b, g); g.lines = readLines('grl', ['recd', 'acc']).map(l => ({ item: l.item, recd: num(l.recd), acc: l.acc === null ? num(l.recd) : num(l.acc), remarks: l.remarks || '' }));
       if (!g.po && !g.noPo) return toast('No PO - no GRN. Choose the approved PO, or No PO.', 'bad');
       if (g.noPo) {
+        if (!g.vendor) return toast('Choose the vendor from the vendor list.', 'bad');
         if (!g.noPoReason || !g.noPoBy) return toast('Give the reason and who approved the receipt without a PO.', 'bad');
-        const value = g.lines.reduce((a, l) => { const m = mplRate(l.item, ''); return a + num(l.acc) * (m ? m.rate : 0); }, 0);
-        if (value >= num(S.settings.poFrom)) return toast('Above the PO limit (' + fmt(S.settings.poFrom) + ' IQD): a PO is needed.', 'bad');
+        const value = noPoValue(g.lines);
+        if (value >= num(S.settings.poFrom)) return toast('Not saved: these goods are worth ' + fmt(value) + ' IQD, at or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD). A PO is needed.', 'bad');
       }
       commit('GRN saved', no); render(); ACT.editGRN(no); toast('Saved. Accepted quantity enters stock at the PO rate.', 'ok');
     } }, canSee('GRN Print') && { l: 'Print / export (MH-12)', fn: () => printGRN(no) }], { wide: true });
 };
 function printGRN(no) {
   const g = S.grns.find(x => x.no === no), rows = C.grn.filter(r => r.g.no === no), p = findPO(g.po) || {};
-  printDoc('GOODS RECEIPT NOTE (MH-12) ' + no, kv([['GRN no.', `<b>${esc(no)}</b>`, 'Date received', fdate(g.date)], ['PO no.', esc(g.po || (g.noPo ? 'No PO - ' + (g.noPoReason || '') : '')), 'Vendor', esc(p.vendor)], ['Challan / DN no.', esc(g.challan), 'Received by', esc(g.by)]])
+  printDoc('GOODS RECEIPT NOTE (MH-12) ' + no, kv([['GRN no.', `<b>${esc(no)}</b>`, 'Date received', fdate(g.date)], ['PO no.', esc(g.po || (g.noPo ? 'No PO - ' + (g.noPoReason || '') : '')), 'Vendor', esc(p.vendor || g.vendor || '')], ['Challan / DN no.', esc(g.challan), 'Received by', esc(g.by)]])
     + `<table class="lt"><thead><tr><th>Sr</th><th>Item code</th><th>Item</th><th>Unit</th><th class="n">PO qty</th><th class="n">Received</th><th class="n">Accepted</th><th class="n">Rejected</th><th>Check</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.l.item)}</td><td>${esc(itemName(r.l.item))}</td><td>${esc((item(r.l.item) || {}).unit)}</td><td class="n">${fmtQ(r.poQty)}</td><td class="n">${fmtQ(r.l.recd)}</td><td class="n">${fmtQ(r.l.acc)}</td><td class="n">${fmtQ(r.rej)}</td><td>${esc(r.check)}</td></tr>`).join('')}</tbody></table>
     <p>Remarks / rejection details: ${esc([g.remarks].concat(g.lines.map(l => l.remarks)).filter(Boolean).join('; '))}</p>` + sigs(['Delivered by (vendor)', 'Received - GRN Officer', 'Verified - Masool / user'])
     + '<p class="small">No PO - no GRN. Quantity above the PO is returned. Rejected goods go back with the vehicle or against a debit note. One copy to Accounts with the bill.</p>');
