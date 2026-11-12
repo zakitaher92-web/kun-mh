@@ -13,7 +13,7 @@ const { canonStr, sid } = require('../src/registers');
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 async function main() {
-  const pool = new Pool({ ...connectionConfig(), max: 4 });
+  const pool = new Pool({ ...connectionConfig(), max: 4, query_timeout: 30000 });   // a stuck query fails with an error
   const kv = createStore(pool, 'kv');
   const tb = createStore(pool, 'tables');
   let failures = 0;
@@ -41,16 +41,19 @@ async function main() {
   // 1b. document-number locks
   const locks = (await pool.query("SELECT id, data FROM kv_docs WHERE coll = 'locks' ORDER BY id")).rows;
   for (const l of locks) {
+    // the copy keeps the counter, not the lease (leases are short-lived), so compare the counter
     const t = await tb.get('locks', l.id);
-    const same = canonStr(t) === canonStr(l.data);
+    const same = (t && t.last) === (l.data && l.data.last);
     if (!same) failures++;
     console.log(`${same ? 'ok      ' : 'MISMATCH'} locks ${l.id}: ${JSON.stringify(l.data)} vs ${JSON.stringify(t)}`);
   }
 
   // 2. write path, rolled back
+  console.log('write path: starting');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query("SET LOCAL lock_timeout = '10s'");   // a row locked by another session fails here, not hanging
     const before = await tb.get('m_items', 'all', { client, forUpdate: true });
     if (!before) throw new Error('no item chunk in the tables to test with');
     const rows = { ...before.rows };
@@ -72,13 +75,17 @@ async function main() {
     console.log('rolled back the write test');
   } catch (e) {
     failures++;
-    await client.query('ROLLBACK').catch(() => { });
     console.log('MISMATCH write path: ' + e.message);
-  } finally {
-    client.release();
+    client.release(true);   // destroy the connection: the server rolls the transaction back
+    return finish(failures, pool);
   }
+  client.release();
 
-  await pool.end();
+  return finish(failures, pool);
+}
+
+async function finish(failures, pool) {
+  await pool.end().catch(() => { });
   console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
   process.exitCode = failures ? 1 : 0;
 }

@@ -71,6 +71,22 @@ function kvStore(pool) {
   };
 }
 
+// Inserts rows in batches of 200 (one statement each). A round trip per row is too slow on a hosted database.
+const BATCH = 200;
+async function insertBatches(q, o, table, rows, conflictKey) {
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const part = rows.slice(i, i + BATCH);
+    const names = part[0].names;
+    const params = [];
+    const tuples = part.map(row => '(' + row.values.map((v, j) => {
+      params.push(names[j] === 'record' ? JSON.stringify(v) : v);
+      return names[j] === 'record' ? `$${params.length}::jsonb` : `$${params.length}`;
+    }).join(', ') + ')');
+    const update = conflictKey ? ` ON CONFLICT (${conflictKey}) DO UPDATE SET ${names.filter(n => n !== conflictKey).map(n => `${n} = EXCLUDED.${n}`).join(', ')}` : '';
+    await q(o, `INSERT INTO ${table} (${names.join(', ')}) VALUES ${tuples.join(', ')}${update}`, params);
+  }
+}
+
 /* ---------- relational tables ---------- */
 function tablesStore(pool) {
   const spec = coll => SPECS[coll] || null;
@@ -133,33 +149,29 @@ function tablesStore(pool) {
       }
       const s = spec(coll);
       if (!s) throw httpError(400, 'invalid_argument', 'This collection is not kept in tables mode');
-      const keep = [];
+      const recs = [], lineRows = [], keys = [], seen = new Set();
       for (const [chunkKey, entry] of Object.entries((data && data.rows) || {})) {
         const r = entry && entry.r;
         if (!r || typeof r !== 'object') throw httpError(400, 'invalid_argument', `Bad record ${chunkKey}`);
         const key = nz(r[s.key]);
         if (!key) throw httpError(400, 'invalid_argument', `A record in ${coll} has no ${s.key}`);
+        if (seen.has(key)) throw httpError(400, 'invalid_argument', `${key} is in ${coll} twice`);
+        seen.add(key); keys.push(key);
         const cols = s.cols(r, []);
-        const names = [s.key, ...Object.keys(cols), 'chunk', 'ord', 'record'];
-        const values = [key, ...Object.values(cols), id, num(entry.o) ?? 0, JSON.stringify(r)];
-        const params = names.map((n, i) => (n === 'record' ? `$${i + 1}::jsonb` : `$${i + 1}`));
-        const update = names.filter(n => n !== s.key).map(n => `${n} = EXCLUDED.${n}`).join(', ');
-        await q(o, `INSERT INTO ${s.table} (${names.join(', ')}) VALUES (${params.join(', ')})
-          ON CONFLICT (${s.key}) DO UPDATE SET ${update}`, values);
+        recs.push({ names: [s.key, ...Object.keys(cols), 'chunk', 'ord', 'record'], values: [key, ...Object.values(cols), id, num(entry.o) ?? 0, r] });
         if (s.lines) {
-          await q(o, `DELETE FROM ${s.lines.table} WHERE ${s.lines.parent} = $1`, [key]);
-          const lines = s.lines.from(r);
-          for (let i = 0; i < lines.length; i++) {
-            const lc = s.lines.cols(lines[i]);
-            const ln = [s.lines.parent, 'line_no', ...Object.keys(lc), 'record'];
-            const lv = [key, i + 1, ...Object.values(lc), JSON.stringify(lines[i])];
-            const lp = ln.map((n, j) => (n === 'record' ? `$${j + 1}::jsonb` : `$${j + 1}`));
-            await q(o, `INSERT INTO ${s.lines.table} (${ln.join(', ')}) VALUES (${lp.join(', ')})`, lv);
-          }
+          s.lines.from(r).forEach((l, i) => {
+            const lc = s.lines.cols(l);
+            lineRows.push({ names: [s.lines.parent, 'line_no', ...Object.keys(lc), 'record'], values: [key, i + 1, ...Object.values(lc), l] });
+          });
         }
-        keep.push(key);
       }
-      await q(o, `DELETE FROM ${s.table} WHERE chunk = $1 AND NOT (${s.key} = ANY($2::text[]))`, [id, keep]);
+      await insertBatches(q, o, s.table, recs, s.key);
+      if (s.lines) {
+        await q(o, `DELETE FROM ${s.lines.table} WHERE ${s.lines.parent} = ANY($1::text[])`, [keys]);
+        await insertBatches(q, o, s.lines.table, lineRows, null);
+      }
+      await q(o, `DELETE FROM ${s.table} WHERE chunk = $1 AND NOT (${s.key} = ANY($2::text[]))`, [id, keys]);
     },
     async del(coll, id) {
       if (coll === 'cfg') return void await pool.query('DELETE FROM settings WHERE key = $1', [id]);
