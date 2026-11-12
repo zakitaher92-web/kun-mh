@@ -22,7 +22,14 @@ function connectionConfig() {
 
 function createPool() {
   // Serverless hosts (Vercel) need a small pool per instance; a server keeps 10.
-  const pool = new Pool({ ...connectionConfig(), max: Number(process.env.DB_POOL_MAX || 10) });
+  // Time limits: a database that does not answer fails the request with a clear error
+  // (connect in 10 s, any query in 20 s) instead of hanging until the host kills it at 30 s.
+  const pool = new Pool({
+    ...connectionConfig(),
+    max: Number(process.env.DB_POOL_MAX || 10),
+    connectionTimeoutMillis: 10000,
+    query_timeout: 20000,
+  });
   // an idle connection that drops must not stop the server
   pool.on('error', e => console.error('Database connection problem:', e.message));
   return pool;
