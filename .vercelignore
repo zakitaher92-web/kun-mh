@@ -1,0 +1,13 @@
+.env
+.env.*
+server/.env
+server/.env.*
+node_modules
+server/node_modules
+logs
+setup
+dist
+server/test
+server/testing
+.git
+archive

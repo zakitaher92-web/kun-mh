@@ -1,0 +1,25 @@
+{
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30,
+      "includeFiles": "{index.html,rules.js,server/client/**,server/schema.sql}"
+    }
+  },
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/api/index"
+    },
+    {
+      "src": "/index.html",
+      "dest": "/api/index"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index"
+    }
+  ]
+}

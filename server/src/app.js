@@ -1,0 +1,368 @@
+'use strict';
+// KUN Maintenance & Housekeeping - the web application (routes only).
+// createApp(pool) builds the Express app on a PostgreSQL pool, so the tests can run it on a fake pool.
+// server.js starts it on the network interface and the database.
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const { canWrite, canRead, ROLES } = require('./permissions');
+const { createStore } = require('./store');
+
+const APP_DIR = path.join(__dirname, '..', '..');          // the kun-mh folder (index.html)
+const CLIENT_DIR = path.join(__dirname, '..', 'client');   // server-adapter.js
+const COOKIE = 'kunmh_sid';
+const SESSION_HOURS = 12;
+const COLL_RE = /^[a-z_]{1,60}$/;
+const ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,190}$/;             // same characters the app allows in document ids
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);   // keeps log-in timing the same for unknown emails
+const DEADLOCK = '40P01';                                  // PostgreSQL error code for a deadlock
+const LOCK_AFTER = 3;                                      // wrong passwords before a pause ...
+const LOCK_MS = 30000;                                     // ... of 30 seconds, per email
+
+const sha256 = s => crypto.createHash('sha256').update(s).digest('hex');
+const httpError = (status, code, message) => Object.assign(new Error(message), { status, code });
+
+function readCookie(req, name) {
+  const m = (req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+  return m ? m[1] : null;
+}
+function checkColl(c) { if (!COLL_RE.test(c)) throw httpError(400, 'invalid_argument', 'Bad collection name'); }
+function checkId(i) { if (!ID_RE.test(i)) throw httpError(400, 'invalid_argument', 'Bad document id'); }
+function isPlain(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+
+// Merge: nested objects are merged key by key; arrays and other values are replaced.
+function deepMerge(base, patch) {
+  if (!isPlain(base) || !isPlain(patch)) return patch;
+  const out = { ...base };
+  for (const k of Object.keys(patch)) out[k] = k in out ? deepMerge(out[k], patch[k]) : patch[k];
+  return out;
+}
+
+function createApp(pool, options = {}) {
+  // Where documents are kept: kv_docs (DATA_MODE=kv, the default) or the relational tables (DATA_MODE=tables).
+  const store = createStore(pool, options.dataMode || process.env.DATA_MODE);
+  const cookieSecure = options.cookieSecure !== undefined ? options.cookieSecure : /^(1|true|yes)$/i.test(process.env.COOKIE_SECURE || '');
+  const loginFails = new Map();                            // email -> { fails, until }
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '10mb' }));                 // one chunk of register rows can be large
+
+  // Runs fn inside a transaction; retries if PostgreSQL reports a deadlock.
+  async function txn(fn) {
+    for (let attempt = 1; ; attempt++) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const out = await fn(client);
+        await client.query('COMMIT');
+        return out;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => { });
+        if (e.code === DEADLOCK && attempt < 4) continue;
+        throw e;
+      } finally {
+        client.release();
+      }
+    }
+  }
+
+  /* ---------- log-in ---------- */
+  async function currentUser(req) {
+    const token = readCookie(req, COOKIE);
+    if (!token) return null;
+    const { rows } = await pool.query(
+      `SELECT a.id, a.email, a.name FROM sessions s JOIN accounts a ON a.id = s.account_id
+       WHERE s.token = $1 AND s.expires_at > now() AND a.active`, [sha256(token)]);
+    return rows[0] || null;
+  }
+  async function requireUser(req, res, next) {
+    try {
+      // Local test server only (testing/dev-server.js): skips the log-in and acts as the given user.
+      // The production server never passes options.devUser, so this has no effect there.
+      if (options.devUser) { req.user = options.devUser; return next(); }
+      const user = await currentUser(req);
+      if (!user) return next(httpError(401, 'revoked', 'Log in first'));
+      req.user = user;
+      next();
+    } catch (e) { next(e); }
+  }
+
+  /* ---------- audit log (same format as the app's own audit entries) ---------- */
+  async function logAudit(user, action, details) {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const month = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const t = `${month}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    await txn(async client => {
+      const doc = (await store.get('m_audit', month, { client, forUpdate: true })) || { rows: {} };
+      doc.rows = doc.rows || {};
+      const order = Math.max(-1, ...Object.values(doc.rows).map(x => (x && typeof x.o === 'number' ? x.o : -1))) + 1;
+      const key = `${t.replace(/\D/g, '')}-${crypto.randomBytes(3).toString('hex')}`;
+      doc.rows[key] = { o: order, r: { k: key, t, user, action, details } };
+      await store.put('m_audit', month, doc, 'server', { client });
+    });
+  }
+
+  app.post('/api/login', async (req, res, next) => {
+    try {
+      const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+      const password = String((req.body && req.body.password) || '');
+      const lock = loginFails.get(email) || { fails: 0, until: 0 };
+      if (lock.until > Date.now()) throw httpError(429, 'invalid_argument', 'Too many attempts. Wait 30 seconds and try again.');
+      const { rows } = await pool.query('SELECT id, email, name, password_hash, active FROM accounts WHERE email = $1', [email]);
+      const account = rows[0];
+      const ok = await bcrypt.compare(password, account ? account.password_hash : DUMMY_HASH);
+      if (!account || !ok || !account.active) {
+        lock.fails += 1;
+        if (lock.fails >= LOCK_AFTER) { lock.until = Date.now() + LOCK_MS; lock.fails = 0; }
+        loginFails.set(email, lock);
+        // phase 3 (A6): failed attempts are recorded. The password itself is never logged.
+        await logAudit(email || '(no email)', 'Failed log-in', 'Wrong email or password').catch(() => { });
+        throw httpError(401, 'invalid_argument', 'Wrong email or password.');
+      }
+      loginFails.delete(email);
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.query('INSERT INTO sessions (token, account_id, expires_at) VALUES ($1, $2, now() + make_interval(hours => $3))',
+        [sha256(token), account.id, SESSION_HOURS]);
+      await pool.query('UPDATE accounts SET last_login = now() WHERE id = $1', [account.id]);
+      await logAudit(account.name || account.email, 'Log in', account.email).catch(() => { });
+      // HttpOnly: page scripts cannot read the token. SameSite=Strict: other websites cannot send it.
+      // Secure: the browser sends it only over HTTPS (switch on with COOKIE_SECURE=true once IIS serves HTTPS).
+      res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_HOURS * 3600}${cookieSecure ? '; Secure' : ''}`);
+      res.json({ id: account.id, email: account.email, name: account.name });
+    } catch (e) { next(e); }
+  });
+
+  app.post('/api/logout', async (req, res, next) => {
+    try {
+      const token = readCookie(req, COOKIE);
+      if (token) await pool.query('DELETE FROM sessions WHERE token = $1', [sha256(token)]);
+      res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${cookieSecure ? '; Secure' : ''}`);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  app.get('/api/me', requireUser, (req, res) => res.json(req.user));
+
+  // The in-app user linked to a log-in carries the role (users are linked through their account id).
+  async function roleOf(accountId) {
+    return store.roleOf(accountId);
+  }
+  // The role list (cfg/roles, version 2.2): the eight base roles when none is saved.
+  async function rolesList() {
+    const roles = await store.get('cfg', 'roles');
+    const list = roles && roles.v && roles.v.list;
+    return Array.isArray(list) && list.length ? list : ROLES;
+  }
+  // The saved access matrix (cfg/access, stored under "v"); null when none is saved yet.
+  async function accessMatrix() {
+    const access = await store.get('cfg', 'access');
+    return access ? access.v || null : null;
+  }
+
+  app.post('/api/admin/reset-password', requireUser, async (req, res, next) => {
+    try {
+      if ((await roleOf(req.user.id)) !== 'Admin') throw httpError(403, 'forbidden', 'Only the Admin can reset a log-in password.');
+      const accountId = String((req.body && req.body.accountId) || '');
+      const password = String((req.body && req.body.password) || '');
+      if (!ID_RE.test(accountId)) throw httpError(400, 'invalid_argument', 'Bad log-in id.');
+      if (password.length < 8) throw httpError(400, 'invalid_argument', 'Use at least 8 characters.');
+      const r = await pool.query('UPDATE accounts SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(password, 10), accountId]);
+      if (!r.rowCount) throw httpError(404, 'invalid_argument', 'That log-in does not exist.');
+      await pool.query('DELETE FROM sessions WHERE account_id = $1', [accountId]);
+      const target = await pool.query('SELECT email FROM accounts WHERE id = $1', [accountId]);
+      await logAudit(req.user.name || req.user.email, 'Log-in password reset', target.rows[0] ? target.rows[0].email : accountId);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+  app.post('/api/me/password', requireUser, async (req, res, next) => {
+    try {
+      const current = String((req.body && req.body.current) || '');
+      const next_ = String((req.body && req.body.password) || '');
+      const { rows } = await pool.query('SELECT password_hash FROM accounts WHERE id = $1', [req.user.id]);
+      if (!rows.length || !(await bcrypt.compare(current, rows[0].password_hash))) throw httpError(400, 'invalid_argument', 'The current password is wrong.');
+      if (next_.length < 8) throw httpError(400, 'invalid_argument', 'Use at least 8 characters.');
+      await pool.query('UPDATE accounts SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(next_, 10), req.user.id]);
+      await logAudit(req.user.name || req.user.email, 'Password changed', req.user.email);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  /* ---------- people directory (used for the names shown in the app) ---------- */
+  app.get('/api/people', requireUser, async (req, res, next) => {
+    try {
+      if (req.query.ids !== undefined) {
+        const ids = String(req.query.ids).split(',').filter(x => ID_RE.test(x)).slice(0, 200);
+        const people = {};
+        if (ids.length) {
+          const { rows } = await pool.query('SELECT id, email, name FROM accounts WHERE id = ANY($1::text[])', [ids]);
+          rows.forEach(r => { people[r.id] = { email: r.email, name: r.name }; });
+        }
+        return res.json({ people });
+      }
+      const q = String(req.query.q || '').trim().replace(/[\\%_]/g, c => '\\' + c);
+      const { rows } = await pool.query(
+        `SELECT id, email, name FROM accounts WHERE active AND (email ILIKE $1 OR name ILIKE $1) ORDER BY name LIMIT 8`,
+        [`%${q}%`]);
+      res.json({ people: rows });
+    } catch (e) { next(e); }
+  });
+
+  /* ---------- documents (the app's database) ---------- */
+  // Reads: any signed-in user (the app loads its working set on start).
+  // Reads (A2 follow-up): a collection the role may not see comes back empty, as if it had no records.
+  async function readAllowed(user, coll) {
+    return canRead({ role: await roleOf(user.id), collection: coll, access: await accessMatrix(), roles: await rolesList() });
+  }
+
+  app.get('/api/docs/:coll', requireUser, async (req, res, next) => {
+    try {
+      checkColl(req.params.coll);
+      if (!(await readAllowed(req.user, req.params.coll))) return res.json({ docs: [] });
+      res.json({ docs: await store.list(req.params.coll) });
+    } catch (e) { next(e); }
+  });
+
+  app.get('/api/docs/:coll/:id', requireUser, async (req, res, next) => {
+    try {
+      checkColl(req.params.coll); checkId(req.params.id);
+      if (!(await readAllowed(req.user, req.params.coll))) return res.json({ exists: false });
+      const data = await store.get(req.params.coll, req.params.id);
+      res.json(data !== null ? { exists: true, data } : { exists: false });
+    } catch (e) { next(e); }
+  });
+
+  // Writes: refused (403) unless the role may edit the page that owns the collection (phase 3, A2).
+  async function requireWrite(user, coll) {
+    const role = await roleOf(user.id);
+    const access = await accessMatrix();
+    if (!canWrite({ role, collection: coll, access, roles: await rolesList() })) {
+      throw httpError(403, 'forbidden', 'Your role may not change this page. Ask the Head of Accounts if you need access.');
+    }
+  }
+
+  // Items: a GRN Officer (or Store Keeper, who acts as one) may only ADD items; existing items cannot change or go.
+  async function requireItemsWrite(user, data, merge) {
+    const role = await roleOf(user.id);
+    const access = await accessMatrix();
+    const roles = await rolesList();
+    if (canWrite({ role, collection: 'm_items', access, roles })) return;
+    if (role !== 'GRN Officer' && role !== 'Store Keeper') return requireWrite(user, 'm_items');
+    const old = (await store.get('m_items', 'all')) || { rows: {} };
+    const next = merge ? deepMerge(old, data) : data;
+    const oldRows = old.rows || {}, newRows = (next && next.rows) || {};
+    for (const k of Object.keys(oldRows)) {
+      if (!newRows[k] || JSON.stringify(newRows[k].r) !== JSON.stringify(oldRows[k].r)) {
+        throw httpError(403, 'forbidden', 'The GRN Officer may add new items only. Existing items are changed by the Maintenance Masool.');
+      }
+    }
+    for (const k of Object.keys(newRows)) {
+      if (oldRows[k]) continue;
+      const r = (newRows[k] && newRows[k].r) || {};
+      if (!r.code || !r.name || !r.cat) throw httpError(400, 'invalid_argument', 'A new item needs a code, name and category.');
+    }
+  }
+
+  // body: { data, merge }  merge=false replaces the document, merge=true merges into it (the app's "update")
+  app.put('/api/docs/:coll/:id', requireUser, async (req, res, next) => {
+    try {
+      const { coll, id } = req.params;
+      checkColl(coll); checkId(id);
+      const data = req.body && req.body.data;
+      if (!isPlain(data)) throw httpError(400, 'invalid_argument', 'data must be an object');
+      if (coll === 'm_items' && id === 'all') await requireItemsWrite(req.user, data, !!req.body.merge);
+      else await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
+      await txn(async client => {
+        let next_ = data;
+        if (req.body.merge) {
+          const existing = await store.get(coll, id, { client, forUpdate: true });
+          if (existing !== null) next_ = deepMerge(existing, data);
+        }
+        await store.put(coll, id, next_, req.user.id, { client });
+      });
+      broadcast(coll);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  app.delete('/api/docs/:coll/:id', requireUser, async (req, res, next) => {
+    try {
+      const { coll, id } = req.params;
+      checkColl(coll); checkId(id);
+      await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
+      await store.del(coll, id);
+      broadcast(coll);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  // Short lock used so two people never get the same document number (see allocNumber in index.html).
+  app.post('/api/lease', requireUser, async (req, res, next) => {
+    try {
+      const { coll, id, holder } = req.body || {};
+      const ttl = Math.min(Math.max(Number((req.body || {}).ttlMs) || 30000, 1000), 600000);
+      checkColl(String(coll || '')); checkId(String(id || ''));
+      const now = Date.now();
+      const acquired = await txn(client => store.lease(coll, id, holder, ttl, now, { client, by: req.user.id }));
+      res.json({ acquired, holder });
+    } catch (e) { next(e); }
+  });
+
+  /* ---------- live updates: the browser is told when a collection changes ---------- */
+  const streams = new Set();
+  app.get('/api/events', requireUser, (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.write('retry: 3000\n\n');
+    streams.add(res);
+    const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+    req.on('close', () => { clearInterval(ping); streams.delete(res); });
+  });
+  // Finding 4: every change is sent to the database as a NOTIFY on one channel. Each server process
+  // listens on that channel (see server.js) and passes the change to its own browsers, so a change
+  // made through one process reaches users connected to any process. Without a listener (tests, or
+  // a single process started without one) the change goes straight to this process's browsers.
+  const CHANNEL = 'kun_mh_changes';
+  function onChange(coll) {
+    const message = `event: change\ndata: ${JSON.stringify({ coll })}\n\n`;
+    for (const res of streams) res.write(message);
+  }
+  if (options.notifier) {
+    options.notifier.on('notification', msg => { if (msg && msg.channel === CHANNEL) onChange(msg.payload); });
+  }
+  function broadcast(coll) {
+    if (!options.notifier) return onChange(coll);
+    pool.query('SELECT pg_notify($1, $2)', [CHANNEL, coll]).catch(() => onChange(coll));
+  }
+
+  /* ---------- the web page ---------- */
+  // index.html is served with one extra script tag so the page saves its data to this server.
+  const ADAPTER_TAG = '<script src="/server-adapter.js"></script>\n';
+  app.get(['/', '/index.html'], (req, res, next) => {
+    try {
+      let html = fs.readFileSync(path.join(APP_DIR, 'index.html'), 'utf8');
+      html = html.replace('</head>', ADAPTER_TAG + '</head>');
+      res.type('html').send(html);
+    } catch (e) { next(e); }
+  });
+  app.get('/server-adapter.js', (req, res) => res.type('js').sendFile(path.join(CLIENT_DIR, 'server-adapter.js')));
+  app.get('/rules.js', (req, res) => res.type('js').sendFile(path.join(APP_DIR, 'rules.js')));   // calculation rules (page + tests)
+
+  /* ---------- errors ---------- */
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    if (err.status && err.status < 500) {
+      console.warn(`${req.method} ${req.originalUrl} -> ${err.status} ${err.message}`);
+      return res.status(err.status).json({ code: err.code || 'invalid_argument', error: err.message });
+    }
+    if (err.type === 'entity.parse.failed') return res.status(400).json({ code: 'invalid_argument', error: 'Bad request body' });
+    console.error(err);
+    res.status(503).json({ code: 'unavailable', error: 'Server error - see the server console' });
+  });
+
+  return { app, broadcast, onChange, streams, loginFails, CHANNEL };
+}
+
+module.exports = { createApp, deepMerge, isPlain };
