@@ -2068,7 +2068,25 @@ function advOnPO(b, amt) {
   if (!p || num(p.adv) <= 0) return 0;
   return Math.round(Math.min(num(amt) * num(p.adv), advBal(b)));
 }
-App.billPO = sel => { const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b); b.po = sel.value; b.refs = ''; b.advAdj = advOnPO(b, b.amount); ACT.editBILL(b.no); };
+App.billPO = sel => { const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b); b.kind = 'po'; b.po = sel.value; b.refs = ''; b.advAdj = advOnPO(b, b.amount); ACT.editBILL(b.no); };
+// Bill type: PO based or No PO based. Switching clears what belongs to the other type.
+App.billKind = el => {
+  const b = S.bills.find(x => x.no === el.dataset.doc); readInto($('#modal .mbody'), b);
+  b.kind = el.value; b.po = ''; b.refs = ''; b.items = []; b.advAdj = 0; b.vendor = ''; b.line = ''; b.amount = null;
+  ACT.editBILL(b.no);
+};
+// No PO bill: choosing the GRN fills the vendor, the items (rates below) and the budget line from it.
+App.billGRN = sel => {
+  const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b);
+  const g = S.grns.find(x => x.no === sel.value);
+  b.refs = g ? g.no : ''; b.items = []; b.amount = null;
+  b.vendor = g ? (g.vendor || '') : ''; b.line = g ? grnBudgetLine(g) : '';
+  if (g && !g.vendor) toast('This GRN has no vendor (entered before vendors were recorded on No PO GRNs). Set the vendor on the GRN page, or type it here.', 'bad');
+  if (g && new Set((g.lines || []).map(l => itemLine(l.item)).filter(Boolean)).size > 1) toast('This GRN has items on more than one budget line - the bill takes the first. Split the GRN if needed.', 'bad');
+  ACT.editBILL(b.no);
+};
+// Budget line of a GRN without a PO: the budget line of its items (taken from their category).
+function grnBudgetLine(g) { return [...new Set((g.lines || []).map(l => itemLine(l.item)).filter(Boolean))][0] || ''; }
 App.suggestAdv = no => {
   const b = S.bills.find(x => x.no === no), p = findPO(b.po); if (!p) return;
   $('#f_advAdj').value = advOnPO(b, numOrNull($('#f_amount').value));
@@ -2102,33 +2120,40 @@ ACT.editBILL = no => {
   if (p && b.invoicedAmount == null) b.invoicedAmount = b.amount;
   const paid = !!b.payDate;
   const edM = canEdit('Bills') && may('Maintenance Masool') && !paid && b.audit !== 'Clear';
+  const kind = b.kind || (b.po ? 'po' : 'nopo');
   const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no))
-    : S.grns.filter(g => !g.po && g.noPo && !S.bills.some(x => x.no !== b.no && (x.refs || '').split(/;\s*/).includes(g.no))).map(g => g.no);
+    : (kind === 'nopo' ? S.grns.filter(g => !g.po && g.noPo && !S.bills.some(x => x.no !== b.no && (x.refs || '').split(/;\s*/).includes(g.no))).map(g => g.no) : []);
   const refs = (b.refs || '').split(/;\s*/).filter(Boolean);
+  const hasGrn = !p && kind === 'nopo' && refs.length > 0;
+  const noPoOpts = refsAvail.map(x => { const g = S.grns.find(y => y.no === x); return [x, x + (g ? ' - ' + (g.vendor || 'vendor not set') + ' - ' + fdate(g.date) : '')]; });
   if (p && num(p.adv) > 0) setTimeout(() => { const amtEl = $('#f_amount'), advEl = $('#f_advAdj'); if (amtEl && advEl) amtEl.addEventListener('input', () => { advEl.value = advOnPO(b, numOrNull(amtEl.value)); }); }, 0);
   if (p && edM) setTimeout(() => App.billQty(), 0);
   if (!p && edM && (b.refs || '').trim()) setTimeout(() => App.noPoRate(), 0);
   modal('Bill ' + no, `<div class="sum">${flag(r.pay)} Net payable <b>${fmt(r.net)}</b> IQD &middot; 3-way match ${flags(r.match)}</div>
     ${b.audit === 'Clear' && !paid ? '<p class="note">Cleared by the Internal Auditor - the bill entry is locked. Accounts records the payment.</p>' : ''}${paid ? '<p class="note">Paid - locked.</p>' : ''}
-    <div class="grid"><div class="fld"><label>PO no. (blank for a purchase below ${fmt(S.settings.poFrom)} IQD)</label><select data-doc="${esc(no)}" onchange="App.billPO(this)" ${edM ? '' : 'disabled'}>${opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po)}</select></div></div>`
+    <div class="grid"><div class="fld full"><label>Bill type <i>*</i></label><div class="chips"><label class="chk"><input type="radio" name="billKind" data-doc="${esc(no)}" value="po" ${kind === 'po' ? 'checked' : ''} ${edM ? '' : 'disabled'} onchange="App.billKind(this)"> PO based bill entry</label><label class="chk"><input type="radio" name="billKind" data-doc="${esc(no)}" value="nopo" ${kind === 'nopo' ? 'checked' : ''} ${edM ? '' : 'disabled'} onchange="App.billKind(this)"> No PO based bill entry</label></div></div>${kind === 'po' ? '<div class="fld"><label>PO no. <i>*</i></label><select data-doc="' + esc(no) + '" onchange="App.billPO(this)" ' + (edM ? '' : 'disabled') + '>' + opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po) + '</select></div>' : '<div class="fld"><label>GRN without a PO (not yet billed) <i>*</i></label><select id="f_noPoGrn" data-doc="' + esc(no) + '" onchange="App.billGRN(this)" ' + (edM ? '' : 'disabled') + '>' + opts(noPoOpts, refs[0] || '') + '</select>' + (noPoOpts.length ? '<small>Choose the GRN: vendor, items and budget line fill in from it.</small>' : '<small>None. Enter the GRN for a no-PO purchase first (GRN page, No PO).</small>') + '</div>'}</div>`
     + (p ? priceHistoryHtml(p) : '')
     + (p ? billItemsHtml(b, p, edM) : billNoPoHtml(b, edM))
     + fields([
       { k: 'date', l: 'Date submitted to Accounts', t: 'date', ed: edM }, { k: 'invNo', l: 'Vendor invoice no.', t: 'text', ed: edM, req: 1 }, { k: 'invDate', l: 'Invoice date', t: 'date', ed: edM },
-      { k: 'amount', l: (p || (b.refs || '').trim()) ? 'Bill amount on accepted quantities (IQD)' : 'Invoice amount (IQD)', t: 'num', ed: edM && !p && !(b.refs || '').trim(), req: 1, hint: (p || (b.refs || '').trim()) ? 'Calculated from the quantities and rates. Rejected or undelivered goods are not paid.' : '' },
+      { k: 'amount', l: (p || (b.refs || '').trim()) ? 'Bill amount on accepted quantities (IQD)' : 'Invoice amount (IQD)', t: 'num', ed: edM && kind === 'nopo' && !hasGrn, req: 1, hint: (p || (b.refs || '').trim()) ? 'Calculated from the quantities and rates. Rejected or undelivered goods are not paid.' : '' },
       ...((p || (b.refs || '').trim()) ? [{ k: 'invoicedAmount', l: 'Vendor invoice amount (IQD)', t: 'num', ed: edM, hint: 'As invoiced by the vendor - for reference against the bill amount.' }] : []),
       { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `Filled from the paid advance vouchers on this PO (${pct(p.adv)} of bill, max balance ${fmt(advBal(b))}). <a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Recalculate</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
-    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }])
+    ].concat(kind === 'nopo' ? [{ k: 'vendor', l: hasGrn ? 'Vendor (from the GRN)' : 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM && !(hasGrn && b.vendor) }, { k: 'line', l: hasGrn ? 'Budget line (from the items on the GRN)' : 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM && !(hasGrn && b.line) }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }] : [])
       .concat([{ k: 'desc', l: 'Description of purchase / purpose', t: 'area', full: true, ed: edM }]), b)
     + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>`
-      : `<h4>GRNs without a PO (not yet billed)</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="small">None. Enter the GRN for a no-PO purchase first (GRN page, No PO).</span>'}</div>`)
+      : '')
     + `<h4>Computed</h4>` + kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['PO value', fmt(r.poValue), 'Received (GRN + SRN)', fmt(r.received)], ['Billed to date on PO', fmt(r.billedToDate), 'Retention ' + pct(r.retPct), fmt(r.retention)], ['Advance balance before this bill', fmt(r.advBalBefore), 'Net payable', '<b>' + fmt(r.net) + '</b>']])
     + `<h4>Pre-payment audit and payment</h4>` + kv([['Audit status', b.audit ? flag(b.audit) : 'Awaiting audit', 'Auditor remarks', esc(b.auditRemarks)], ['PV no.', esc(b.pv), 'Paid on / reference', fdate(b.payDate) + ' ' + esc(b.payRef)]]),
     [edM && { l: 'Save', cls: 'pri', fn: body => {
-      readInto(body, b);
-      if (p || refsAvail.length) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      readInto(body, b); b.kind = kind;
+      if (kind === 'po' && !p) return toast('Choose the PO first, or switch to No PO based bill entry.', 'bad');
+      if (p) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      else if (kind === 'nopo') { const s = body.querySelector('#f_noPoGrn'); b.refs = s && s.value ? s.value : ''; }
       if (!p && (b.refs || '').trim()) {
+        const g = S.grns.find(x => x.no === b.refs.trim());
+        if (g) { b.vendor = g.vendor || b.vendor || ''; b.line = grnBudgetLine(g) || b.line || ''; }
         const items = [];
         body.querySelectorAll('.npr').forEach(el => { const q = num(el.dataset.qty), rate = num(el.value); if (q > 0) items.push({ item: el.dataset.item, qty: q, rate, amount: Math.round(q * rate) }); });
         b.items = items; b.amount = items.reduce((s, x) => s + x.amount, 0);
