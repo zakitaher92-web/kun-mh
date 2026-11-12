@@ -118,12 +118,17 @@ async function loadAll(client, plan) {
   await client.query(`TRUNCATE ${TABLES.join(', ')} CASCADE`);
   for (const t of TABLES) {
     console.log('loading ' + t + ' (' + plan.rows[t].length + ' rows)');
-    for (const row of plan.rows[t]) {
-      const cols = Object.keys(row.values);
+    // batches of 200 rows per statement: one round trip per row is too slow on a hosted database
+    for (let i = 0; i < plan.rows[t].length; i += 200) {
+      const part = plan.rows[t].slice(i, i + 200);
+      const cols = Object.keys(part[0].values);
       const isJson = c => c === 'record' || c === 'data';
-      const params = cols.map((c, i) => isJson(c) ? `$${i + 1}::jsonb` : `$${i + 1}`);
-      const values = cols.map(c => isJson(c) ? JSON.stringify(row.values[c]) : row.values[c]);
-      await client.query(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${params.join(', ')})`, values);
+      const params = [];
+      const tuples = part.map(row => '(' + cols.map(c => {
+        params.push(isJson(c) ? JSON.stringify(row.values[c]) : row.values[c]);
+        return isJson(c) ? `$${params.length}::jsonb` : `$${params.length}`;
+      }).join(', ') + ')');
+      await client.query(`INSERT INTO ${t} (${cols.join(', ')}) VALUES ${tuples.join(', ')}`, params);
     }
   }
 }
