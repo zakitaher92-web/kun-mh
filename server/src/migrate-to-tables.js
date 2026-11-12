@@ -267,17 +267,33 @@ async function main() {
     return;
   }
   console.log(`Target: ${target}  mode: ${report.mode}`);
+  let step = 'connecting';
+  let finished = false;
+  // If the event loop empties before the run finishes (a dropped connection, for example), say where it stopped.
+  process.once('beforeExit', () => { if (!finished) console.log('STOPPED before the run finished, at step: ' + step); });
   const client = new Client(cfg);
   await client.connect();
+  console.log('connected');
   let ok = false;
   try {
+    step = 'reading kv_docs';
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    // a table locked by another session (for example an idle transaction left by an earlier run) fails here after 15 s
+    await client.query("SET LOCAL lock_timeout = '15s'");
     const { rows: docs } = await client.query('SELECT coll, id, data FROM kv_docs');
+    console.log('read ' + docs.length + ' documents');
+    step = 'building rows';
     const plan = buildPlan(docs, report.warnings, report);
+    console.log('built rows');
+    step = 'creating tables';
     report.counts = plan.expect;
     await client.query(fs.readFileSync(SCHEMA_FILE, 'utf8'));
     await loadAll(client, plan);
+    console.log('loaded rows');
+    step = 'checking against the source';
     await verify(client, plan, docs, report);
+    console.log('checks passed');
+    step = 'finishing';
     report.finished = new Date().toISOString();
     if (APPLY) {
       await client.query('INSERT INTO migration_runs (mode, target, status, report) VALUES ($1, $2, $3, $4::jsonb)',
@@ -290,10 +306,12 @@ async function main() {
     }
     ok = true;
   } catch (e) {
+    console.log('error at step: ' + step);
     await client.query('ROLLBACK').catch(() => { });
     report.status = 'FAILED, rolled back: ' + e.message; report.stack = e.stack;
   } finally {
-    await client.end();
+    await client.end().catch(() => { });
+    finished = true;
   }
   report.finished = report.finished || new Date().toISOString();
   console.log(JSON.stringify({ status: report.status, counts: report.counts, failedChecks: report.checks.filter(c => !c.ok), warnings: report.warnings.length, skipped: report.skipped }, null, 2));
