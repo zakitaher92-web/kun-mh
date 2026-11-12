@@ -41,7 +41,7 @@ async function main() {
   const expire = () => pool.query('DELETE FROM sessions WHERE expires_at <= now()').catch(() => { });
   await expire();
   setInterval(expire, 3600000).unref();
-  app.listen(PORT, HOST, () => console.log(`KUN MH server running at http://${HOST === '127.0.0.1' ? 'localhost' : HOST}:${PORT}`));
+  app.listen(PORT, HOST, () => console.log(`KUN MH server running at http://${HOST === '127.0.0.1' ? 'localhost' : HOST}:${PORT} (data: ${process.env.DATA_MODE || 'kv'})`));
 }
 
 if (require.main === module) {

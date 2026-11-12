@@ -8,6 +8,7 @@ const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { canWrite, canRead, ROLES } = require('./permissions');
+const { createStore } = require('./store');
 
 const APP_DIR = path.join(__dirname, '..', '..');          // the kun-mh folder (index.html)
 const CLIENT_DIR = path.join(__dirname, '..', 'client');   // server-adapter.js
@@ -40,6 +41,8 @@ function deepMerge(base, patch) {
 }
 
 function createApp(pool, options = {}) {
+  // Where documents are kept: kv_docs (DATA_MODE=kv, the default) or the relational tables (DATA_MODE=tables).
+  const store = createStore(pool, options.dataMode || process.env.DATA_MODE);
   const cookieSecure = options.cookieSecure !== undefined ? options.cookieSecure : /^(1|true|yes)$/i.test(process.env.COOKIE_SECURE || '');
   const loginFails = new Map();                            // email -> { fails, until }
   const app = express();
@@ -63,12 +66,6 @@ function createApp(pool, options = {}) {
         client.release();
       }
     }
-  }
-  async function upsert(client, coll, id, data, by) {
-    await client.query(
-      `INSERT INTO kv_docs (coll, id, data, updated_by) VALUES ($1, $2, $3::jsonb, $4)
-       ON CONFLICT (coll, id) DO UPDATE SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-      [coll, id, JSON.stringify(data), by || null]);
   }
 
   /* ---------- log-in ---------- */
@@ -99,13 +96,12 @@ function createApp(pool, options = {}) {
     const month = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     const t = `${month}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     await txn(async client => {
-      const { rows } = await client.query("SELECT data FROM kv_docs WHERE coll = 'm_audit' AND id = $1 FOR UPDATE", [month]);
-      const doc = rows.length ? rows[0].data : { rows: {} };
+      const doc = (await store.get('m_audit', month, { client, forUpdate: true })) || { rows: {} };
       doc.rows = doc.rows || {};
       const order = Math.max(-1, ...Object.values(doc.rows).map(x => (x && typeof x.o === 'number' ? x.o : -1))) + 1;
       const key = `${t.replace(/\D/g, '')}-${crypto.randomBytes(3).toString('hex')}`;
       doc.rows[key] = { o: order, r: { k: key, t, user, action, details } };
-      await upsert(client, 'm_audit', month, doc, 'server');
+      await store.put('m_audit', month, doc, 'server', { client });
     });
   }
 
@@ -152,21 +148,18 @@ function createApp(pool, options = {}) {
 
   // The in-app user linked to a log-in carries the role (users are linked through their account id).
   async function roleOf(accountId) {
-    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'm_users' AND id = 'all'");
-    const users = (rows[0] && rows[0].data.rows) || {};
-    const linked = Object.values(users).map(x => x && x.r).find(r => r && r.cid === accountId);
-    return linked ? linked.role : null;
+    return store.roleOf(accountId);
   }
   // The role list (cfg/roles, version 2.2): the eight base roles when none is saved.
   async function rolesList() {
-    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'cfg' AND id = 'roles'");
-    const list = rows.length && rows[0].data && rows[0].data.v && rows[0].data.v.list;
+    const roles = await store.get('cfg', 'roles');
+    const list = roles && roles.v && roles.v.list;
     return Array.isArray(list) && list.length ? list : ROLES;
   }
   // The saved access matrix (cfg/access, stored under "v"); null when none is saved yet.
   async function accessMatrix() {
-    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'cfg' AND id = 'access'");
-    return rows.length && rows[0].data ? rows[0].data.v || null : null;
+    const access = await store.get('cfg', 'access');
+    return access ? access.v || null : null;
   }
 
   app.post('/api/admin/reset-password', requireUser, async (req, res, next) => {
@@ -228,8 +221,7 @@ function createApp(pool, options = {}) {
     try {
       checkColl(req.params.coll);
       if (!(await readAllowed(req.user, req.params.coll))) return res.json({ docs: [] });
-      const { rows } = await pool.query('SELECT id, data FROM kv_docs WHERE coll = $1 ORDER BY id', [req.params.coll]);
-      res.json({ docs: rows });
+      res.json({ docs: await store.list(req.params.coll) });
     } catch (e) { next(e); }
   });
 
@@ -237,8 +229,8 @@ function createApp(pool, options = {}) {
     try {
       checkColl(req.params.coll); checkId(req.params.id);
       if (!(await readAllowed(req.user, req.params.coll))) return res.json({ exists: false });
-      const { rows } = await pool.query('SELECT data FROM kv_docs WHERE coll = $1 AND id = $2', [req.params.coll, req.params.id]);
-      res.json(rows.length ? { exists: true, data: rows[0].data } : { exists: false });
+      const data = await store.get(req.params.coll, req.params.id);
+      res.json(data !== null ? { exists: true, data } : { exists: false });
     } catch (e) { next(e); }
   });
 
@@ -258,8 +250,7 @@ function createApp(pool, options = {}) {
     const roles = await rolesList();
     if (canWrite({ role, collection: 'm_items', access, roles })) return;
     if (role !== 'GRN Officer' && role !== 'Store Keeper') return requireWrite(user, 'm_items');
-    const { rows } = await pool.query("SELECT data FROM kv_docs WHERE coll = 'm_items' AND id = 'all'");
-    const old = (rows[0] && rows[0].data) || { rows: {} };
+    const old = (await store.get('m_items', 'all')) || { rows: {} };
     const next = merge ? deepMerge(old, data) : data;
     const oldRows = old.rows || {}, newRows = (next && next.rows) || {};
     for (const k of Object.keys(oldRows)) {
@@ -286,10 +277,10 @@ function createApp(pool, options = {}) {
       await txn(async client => {
         let next_ = data;
         if (req.body.merge) {
-          const { rows } = await client.query('SELECT data FROM kv_docs WHERE coll = $1 AND id = $2 FOR UPDATE', [coll, id]);
-          if (rows.length) next_ = deepMerge(rows[0].data, data);
+          const existing = await store.get(coll, id, { client, forUpdate: true });
+          if (existing !== null) next_ = deepMerge(existing, data);
         }
-        await upsert(client, coll, id, next_, req.user.id);
+        await store.put(coll, id, next_, req.user.id, { client });
       });
       broadcast(coll);
       res.json({ ok: true });
@@ -301,7 +292,7 @@ function createApp(pool, options = {}) {
       const { coll, id } = req.params;
       checkColl(coll); checkId(id);
       await requireWrite(req.user, coll === 'cfg' ? `cfg/${id}` : coll === 'locks' ? `locks/${id}` : coll);
-      await pool.query('DELETE FROM kv_docs WHERE coll = $1 AND id = $2', [coll, id]);
+      await store.del(coll, id);
       broadcast(coll);
       res.json({ ok: true });
     } catch (e) { next(e); }
@@ -314,16 +305,7 @@ function createApp(pool, options = {}) {
       const ttl = Math.min(Math.max(Number((req.body || {}).ttlMs) || 30000, 1000), 600000);
       checkColl(String(coll || '')); checkId(String(id || ''));
       const now = Date.now();
-      const acquired = await txn(async client => {
-        // make sure the row exists and is locked before reading the lease
-        await client.query(`INSERT INTO kv_docs (coll, id, data) VALUES ($1, $2, '{}'::jsonb) ON CONFLICT DO NOTHING`, [coll, id]);
-        const { rows } = await client.query('SELECT data FROM kv_docs WHERE coll = $1 AND id = $2 FOR UPDATE', [coll, id]);
-        const current = rows[0].data;
-        const lease = current.__lease;
-        if (lease && lease.until > now && lease.holder !== holder) return false;
-        await upsert(client, coll, id, { ...current, __lease: { holder, until: now + ttl } }, req.user.id);
-        return true;
-      });
+      const acquired = await txn(client => store.lease(coll, id, holder, ttl, now, { client, by: req.user.id }));
       res.json({ acquired, holder });
     } catch (e) { next(e); }
   });

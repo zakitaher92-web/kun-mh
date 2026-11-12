@@ -239,3 +239,33 @@ CREATE TABLE IF NOT EXISTS migration_runs (
   status      TEXT NOT NULL,
   report      JSONB NOT NULL
 );
+
+-- Chunk and lease columns (added after the first version; ADD COLUMN IF NOT EXISTS keeps this safe to rerun).
+-- chunk = the browser's chunk id the record belongs to (for example 2026-0 or all). The copy script sets it.
+ALTER TABLE pos            ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE advances       ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE grns           ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE srns           ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE bills          ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE cpvs           ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE issues         ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE jobs           ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE laundry        ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE ppm_equipment  ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE rooms          ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE items          ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE vendors        ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE users          ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE doc_numbers    ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE audit_log      ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE notifications  ADD COLUMN IF NOT EXISTS chunk TEXT NOT NULL DEFAULT 'all';
+CREATE INDEX IF NOT EXISTS idx_pos_chunk      ON pos (chunk);
+CREATE INDEX IF NOT EXISTS idx_grns_chunk     ON grns (chunk);
+CREATE INDEX IF NOT EXISTS idx_bills_chunk    ON bills (chunk);
+CREATE INDEX IF NOT EXISTS idx_doc_numbers_chunk ON doc_numbers (chunk);
+CREATE INDEX IF NOT EXISTS idx_audit_log_chunk   ON audit_log (chunk);
+
+-- Document-number leases (the locks/num-TYPE-YEAR documents): who holds the lock and until when (ms since epoch).
+ALTER TABLE number_counters ADD COLUMN IF NOT EXISTS holder TEXT;
+ALTER TABLE number_counters ADD COLUMN IF NOT EXISTS lease_until BIGINT;
+ALTER TABLE doc_numbers ADD COLUMN IF NOT EXISTS ord INT NOT NULL DEFAULT 0;
