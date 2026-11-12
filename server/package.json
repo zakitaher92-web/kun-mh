@@ -17,7 +17,8 @@
     "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js",
     "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js",
     "db:status": "node src/db-status.js",
-    "vendors:avl": "node --env-file-if-exists=.env src/approve-vendors.js"
+    "vendors:avl": "node --env-file-if-exists=.env src/approve-vendors.js",
+    "migrate:tables": "node --env-file-if-exists=.env src/migrate-to-tables.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
