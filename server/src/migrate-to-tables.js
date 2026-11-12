@@ -196,6 +196,7 @@ function buildPlan(docs, warnings, report) {
 async function loadAll(client, plan) {
   await client.query(`TRUNCATE ${TABLES.join(', ')} CASCADE`);
   for (const t of TABLES) {
+    console.log('loading ' + t + ' (' + plan.rows[t].length + ' rows)');
     for (const row of plan.rows[t]) {
       const cols = Object.keys(row.values);
       const isJson = c => c === 'record' || c === 'data';
@@ -271,7 +272,7 @@ async function main() {
   let finished = false;
   // If the event loop empties before the run finishes (a dropped connection, for example), say where it stopped.
   process.once('beforeExit', () => { if (!finished) console.log('STOPPED before the run finished, at step: ' + step); });
-  const client = new Client(cfg);
+  const client = new Client({ ...cfg, query_timeout: 60000 });   // a stuck statement fails after 60 s instead of hanging
   await client.connect();
   console.log('connected');
   let ok = false;
