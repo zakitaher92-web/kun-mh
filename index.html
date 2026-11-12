@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script src="rules.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KUN Maintenance & Housekeeping</title>
 <style>
@@ -53,7 +54,8 @@ input.n{text-align:right}
 /* cards, tiles */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow)}
 .card.bad{border-color:var(--bad);color:var(--bad)}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.two>.card{margin-bottom:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+td.vcol{min-width:210px}.two>.card{margin-bottom:14px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .tile[data-act]{cursor:pointer}.tile[data-act]:hover{border-color:var(--acc)}
@@ -130,6 +132,7 @@ ol.flow li,.card ul li{margin-bottom:6px}
   .menu{display:block}nav{position:fixed;left:0;top:53px;z-index:30;transform:translateX(-100%);transition:transform .2s;box-shadow:var(--shadow)}nav.open{transform:none}
   main{padding:12px 16px 60px}.two,.kanban{grid-template-columns:1fr}.grid.q3{grid-template-columns:1fr 1fr}.who small{display:none}.exb{display:none}
 }
+@media (max-width:640px){.two{grid-template-columns:minmax(0,1fr)}.two>.card{min-width:0}.vtools{flex-wrap:wrap}.btn{white-space:normal;max-width:100%}.flag{max-width:100%;white-space:normal;overflow-wrap:anywhere}}
 @media (max-width:520px){.who{display:none}.brand span{display:none}.tile b{font-size:20px}}
 </style>
 <style id="printcss">
@@ -159,49 +162,58 @@ ol.flow li,.card ul li{margin-bottom:6px}
    Seed data: taken from KUN_Karbala_Maintenance_Housekeeping_Control.xlsm (Version 1.1, 31 Oct 2026)
    and KUN_MH_User_Access_Input.xlsx. Example rows (October 2026) are marked ex:true. */
 
-const ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts'];
+const DEFAULT_ROLES = ['Admin', 'Sigat', 'Internal Auditor', 'Maintenance Masool', 'GRN Officer', 'HK Supervisor', 'Accounts', 'Store Keeper'];
+// v2.2: a role that is checked by name in the code acts as its base role (Store Keeper acts as GRN Officer).
+const ROLE_BASE = { 'Store Keeper': 'GRN Officer' };
+// Editable role list (version 2.2): up to 20 roles, stored with the settings (cfg/roles).
+const MAX_ROLES = 20;
+const defaultRoles = () => ({ list: DEFAULT_ROLES.slice(), base: { ...ROLE_BASE } });
+const roleList = () => (S && S.roles && Array.isArray(S.roles.list) && S.roles.list.length) ? S.roles.list : DEFAULT_ROLES;
+const roleBaseOf = r => (S && S.roles && S.roles.base && S.roles.base[r]) || ROLE_BASE[r] || null;
+const isBaseRole = r => DEFAULT_ROLES.includes(r);
 
-// Module -> format and default rights per role (order as ROLES). From the Access sheet; "Rooms" and "Number Log" added.
+// Module -> format and default rights per role (order as roleList()). From the Access sheet; "Rooms" and "Number Log" added.
 const MODULES = [
-  ['Guide', 'Guide', 'EVVHVVV'],
-  ['My desk', 'Home', 'EEEEEEE'],
-  ['Dashboard', 'MH-24', 'EVVHHHV'],
-  ['Rooms', 'Desk', 'EVVEVEH'],
-  ['Settings', 'MH-01', 'EVVHHHH'],
-  ['Budget', 'MH-02', 'EVVHHHV'],
-  ['Items', 'MH-03', 'EVVHHHV'],
-  ['Vendors', 'MH-04', 'EVVHHHV'],
-  ['MPL', 'MH-05', 'EVVHHHV'],
-  ['PO Register', 'MH-06', 'EVEEVHV'],
-  ['PO Lines', 'MH-07', 'EVVEVHV'],
-  ['PO Print', 'MH-08', 'EEEEEHE'],
-  ['Advances', 'MH-09', 'EVVEHHE'],
-  ['Advance Print', 'MH-10', 'EEEEHHE'],
-  ['GRN', 'MH-11', 'EVVVEHV'],
-  ['GRN Print', 'MH-12', 'EEEEEHE'],
-  ['SRN', 'MH-13', 'EVVEHHV'],
-  ['SRN Print', 'MH-14', 'EEEEHHE'],
-  ['Bills', 'MH-15', 'EVEEHHE'],
-  ['Payment Voucher', 'MH-16A', 'EEEEHHE'],
-  ['Payment Pack', 'MH-16', 'EEEHHHE'],
-  ['Consolidated PV', 'MH-16B', 'EEEHHHE'],
-  ['Issues', 'MH-17', 'EVVVEVV'],
-  ['Stores', 'MH-18', 'EVVVEHV'],
-  ['HK Norms', 'MH-19', 'EVVVHVV'],
-  ['Linen Par', 'MH-20', 'EVVVHEV'],
-  ['Laundry Log', 'MH-21', 'EVVVHEV'],
-  ['Job Cards', 'MH-22', 'EVVEVVH'],
-  ['PPM AMC', 'MH-23', 'EVVEHHH'],
-  ['Audit Log', 'Log', 'VVVHHHH'],
-  ['Notifications', 'Log', 'VVVHHHH'],
-  ['Number Log', 'Log', 'VHHHHHH'],
-  ['Users', 'Admin', 'EHHHHHH'],
-  ['Access', 'Admin', 'EHHHHHH'],
+  ['Guide', 'Guide', 'EVEHVVVV'],
+  ['My desk', 'Home', 'EEEEEEEE'],
+  ['Dashboard', 'MH-24', 'EVEHHHVH'],
+  ['Rooms', 'Desk', 'EVVEVEHH'],
+  ['Settings', 'MH-01', 'EVEHHHHH'],
+  ['Budget', 'MH-02', 'EVEHHHVH'],
+  ['Items', 'MH-03', 'EVEEVHVH'],
+  ['Vendors', 'MH-04', 'EVEEHHVH'],
+  ['MPL', 'MH-05', 'EVEEVHVH'],
+  ['PO Register', 'MH-06', 'EVEEVHVV'],
+  ['PO Lines', 'MH-07', 'EVEEVHVV'],
+  ['PO Print', 'MH-08', 'EEEEEHEE'],
+  ['Advances', 'MH-09', 'EVEEHHEH'],
+  ['Advance Print', 'MH-10', 'EEEEHHEH'],
+  ['GRN', 'MH-11', 'EVEEEHVE'],
+  ['GRN Print', 'MH-12', 'EEEEEHEE'],
+  ['SRN', 'MH-13', 'EVEEHHVH'],
+  ['SRN Print', 'MH-14', 'EEEEHHEH'],
+  ['Bills', 'MH-15', 'EVEEHHEH'],
+  ['Bill Lines', 'MH-15 lines', 'EVEEHHEH'],
+  ['Payment Voucher', 'MH-16A', 'EEEEHHEH'],
+  ['Payment Pack', 'MH-16', 'EEEHHHEH'],
+  ['Consolidated PV', 'MH-16B', 'EEEHHHEH'],
+  ['Issues', 'MH-17', 'EVEEEVVE'],
+  ['Stores', 'MH-18', 'EVEEEHVE'],
+  ['HK Norms', 'MH-19', 'EVEEHVVH'],
+  ['Linen Par', 'MH-20', 'EVEEHEVH'],
+  ['Laundry Log', 'MH-21', 'EVEEHEVH'],
+  ['Job Cards', 'MH-22', 'EVEEVVHV'],
+  ['PPM AMC', 'MH-23', 'EVEEHHHH'],
+  ['Audit Log', 'Log', 'VVVHHHHH'],
+  ['Notifications', 'Log', 'VVVHHHHH'],
+  ['Number Log', 'Log', 'VHHHHHHH'],
+  ['Users', 'Admin', 'EHEHHHHH'],
+  ['Access', 'Admin', 'EHEHHHHH'],
 ];
 
 function defaultAccess() {
   const a = {};
-  MODULES.forEach(([m, , r]) => { a[m] = {}; ROLES.forEach((role, i) => { a[m][role] = r[i]; }); });
+  MODULES.forEach(([m, , r]) => { a[m] = {}; DEFAULT_ROLES.forEach((role, i) => { a[m][role] = r[i]; }); });
   return a;
 }
 
@@ -431,7 +443,7 @@ function seedData() {
   d.users = [{"id": "MASOOL", "name": "Sk Burhanuddin Bhai Jamali", "desig": "Maintenance Masool", "role": "Maintenance Masool", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "bursak52@gmail.com", "hash": null, "salt": null}, {"id": "HOA", "name": "Sk Mufaddal Bhai Yamani", "desig": "Head of Accounts", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}, {"id": "TZAKI", "name": "Taher Bhai Zaki", "desig": "Internal Auditor", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}, {"id": "GRN", "name": "Sk Murtaza Bhai Zakir", "desig": "GRN Officer", "role": "GRN Officer", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "murtazaabdealizakir@gmail.com", "hash": null, "salt": null}, {"id": "HK", "name": "Sk Ammar Bhai Vajihi", "desig": "Housekeeping supervisor", "role": "HK Supervisor", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "", "hash": null, "salt": null}, {"id": "SIGAT1", "name": "M Hamza Bhai", "desig": "Sigat member", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "hamzalunavad@najafkarbala.com", "hash": null, "salt": null}, {"id": "SIGAT2", "name": "Sk Yusuf Bhai Vapiwala", "desig": "Sigat member", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "yusufvapi@najafkarbala.com", "hash": null, "salt": null}, {"id": "TGHADIALI", "name": "Taher Bhai Ghadiali", "desig": "Internal Auditor", "role": "Admin", "active": "Y", "mustChange": true, "lastLogin": "", "contact": "accounts@najafkarbala.com", "hash": null, "salt": null}].map(u => ({ ...u, cid: '', reqCid: '' }));
   d.audit = [{ t: '2026-11-06T09:00', user: 'Consultant', action: 'Workbook masters loaded', details: 'Items, vendors, users, categories and settings from KUN control workbook Ver 1.9. Transactions not loaded.' }];
   d.numlog = [{"type": "GRN", "no": "KBL/MH/GRN/2026/0001", "t": "2026-11-05 13:47:37", "by": "HOA"}].map(n => ({ type: n.type, seq: +String(n.no).split('/').pop() || 0, no: n.no, t: n.t ? n.t.replace(' ', 'T').slice(0, 16) : '', by: n.by }));
-  d.meta.examples = false; d.meta.version = '1.9';
+  d.meta.examples = false; d.meta.version = '2.2';
   return d;
 }
 
@@ -472,6 +484,7 @@ const fmt = (v, d = 0) => (v === null || v === undefined || v === '' || isNaN(v)
 const fmtQ = v => (v === null || v === undefined || v === '') ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const pct = (v, d = 0) => (v === null || v === undefined || isNaN(v)) ? '' : (v * 100).toFixed(d) + '%';
 const pad4 = n => String(n).padStart(4, '0');
+const futureDate = d => !!d && d > isoDate(new Date());
 const isoDate = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
 const isoDT = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); };
 const nowDT = () => isoDT(new Date());
@@ -530,7 +543,7 @@ function checkApproval(pwd) { const a = S.settings.approvalHash; return a && pwd
 /* ---------- access ---------- */
 function defaultRight(module, role) {
   const m = MODULES.find(x => x[0] === module);
-  return m ? (m[2][ROLES.indexOf(role)] || 'H') : 'H';
+  return m ? (m[2][DEFAULT_ROLES.indexOf(role)] || 'H') : 'H';
 }
 function accVal(module, role) {
   const row = S.access && S.access[module];
@@ -559,7 +572,7 @@ function canAct(id) {
   return !lim || lim.includes(U.role);
 }
 // Column rights: fields that only the named roles may change (Admin always may)
-const may = (...roles) => U && (U.role === 'Admin' || roles.includes(U.role));
+const may = (...roles) => { if (!U) return false; const base = roleBaseOf(U.role) || U.role; return base === 'Admin' || roles.includes(U.role) || roles.includes(base); };
 
 /* ---------- audit log and document numbers ---------- */
 function logAudit(action, details) { S.audit.push({ t: nowDT(), user: U ? U.id : '-', action, details: details || '' }); }
@@ -591,8 +604,13 @@ const bline = code => S.budgetLines.find(b => b.code === code);
 const findPO = no => S.pos.find(p => p.no === no);
 const userName = () => U ? U.name : '';
 
+// Version 2.2: each item has one rate. mpl = proposed rate, appr = approved rate (with who and when).
+// The approved rates are read as the price list rows, so the price checks work as before.
+const itemRateStatus = i => (num(i.appr) > 0 && num(i.mpl) === num(i.appr)) ? 'Approved' : (num(i.mpl) > 0 && num(i.mpl) !== num(i.appr)) ? 'Pending approval' : (num(i.mpl) > 0 || num(i.appr) > 0) ? 'Approved' : 'No rate';
+const pendingRates = () => S.items.filter(i => num(i.mpl) > 0 && num(i.mpl) !== num(i.appr));
+const mplRows = () => S.items.filter(i => num(i.appr) > 0).map(i => ({ ex: false, item: i.code, vendor: i.pref || '', rate: num(i.appr), from: i.apprOn || '', to: S.mpl.validUntil, prev: i.prev ?? null, basis: i.basis || '', apprBy: i.apprBy || '' }));
 function mplRate(code, vend) {
-  const rows = S.mpl.rows.filter(r => r.item === code && num(r.rate) > 0);
+  const rows = mplRows().filter(r => r.item === code && num(r.rate) > 0);
   if (!rows.length) return null;
   const v = rows.find(r => r.vendor === vend);
   if (v) return { rate: num(v.rate), src: 'vendor', row: v };
@@ -635,7 +653,7 @@ function recalc() {
       return { i, item: l.item, qty: num(l.qty), rate: num(l.rate), amount, mpl: m ? m.rate : null, diff, price, check, type: itemType(l.item), unit: (item(l.item) || {}).unit || '' };
     });
     const value = lines.reduce((a, l) => a + l.amount, 0);
-    C.po[p.no] = { lines, value, recQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
+    C.po[p.no] = { lines, value, recQty: {}, billedQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
   });
 
   // GRN rows
@@ -662,7 +680,7 @@ function recalc() {
       if (!g.by) flags.push('Received by missing');
       const rate = pl ? pl.rate : 0, val = acc * rate;
       if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + acc; pc.received += val; }
-      C.grn.push({ g, l, i, vendor: p ? p.vendor : '', poQty: pl ? pl.qty : null, rate, val, rej, cum: cumAcc[key], bal: pl ? pl.qty - cumAcc[key] : null, line: p ? p.line : '', mk: mkey(g.date), check: flags.length ? flags.join('; ') : 'OK' });
+      C.grn.push({ g, l, i, vendor: p ? p.vendor : (g.vendor || ''), poQty: pl ? pl.qty : null, rate, val, rej, cum: cumAcc[key], bal: pl ? pl.qty - cumAcc[key] : null, line: p ? p.line : '', mk: mkey(g.date), check: flags.length ? flags.join('; ') : 'OK' });
     });
   });
 
@@ -717,15 +735,21 @@ function recalc() {
   S.bills.forEach(b => { const v = b.po ? (findPO(b.po) || {}).vendor : b.vendor; const k = (v || '') + '|' + String(b.invNo || '').trim().toLowerCase(); if (b.invNo) invKey[k] = (invKey[k] || 0) + 1; });
   S.bills.slice().sort((a, b) => a.no.localeCompare(b.no)).forEach(b => {
     const p = b.po ? findPO(b.po) : null, pc = p && C.po[p.no];
-    const amt = num(b.amount), adj = num(b.advAdj), oth = num(b.otherDed);
+    let amt = num(b.amount);
+    const adj = num(b.advAdj), oth = num(b.otherDed);
+    // Bills saved before quantity billing have a typed amount and no items: they cannot bill more than the accepted value on the PO.
+    let legacyCap = null;
+    if (p && pc && !Array.isArray(b.items)) { legacyCap = Math.max(0, Math.round(pc.received - (billedSoFar[p.no] || 0))); if (amt > legacyCap + 0.5) amt = legacyCap; }
     const r = { vendor: p ? p.vendor : b.vendor, line: p ? p.line : b.line, poValue: pc ? pc.value : null, received: pc ? pc.received : null, retPct: p ? num(p.ret) : 0 };
     r.billedToDate = p ? (billedSoFar[p.no] || 0) + amt : null;
     if (p) billedSoFar[p.no] = r.billedToDate;
+    if (pc && Array.isArray(b.items)) b.items.forEach(it => { pc.billedQty[it.item] = (pc.billedQty[it.item] || 0) + num(it.qty); });
     r.retention = amt * r.retPct;
     r.advBalBefore = p ? pc.advPaid - (advAdjSoFar[p.no] || 0) : 0;
     if (p) advAdjSoFar[p.no] = (advAdjSoFar[p.no] || 0) + adj;
     r.net = amt - adj - r.retention - oth;
     const f = [];
+    if (legacyCap !== null && num(b.amount) > legacyCap + 0.5) f.push('Above accepted value on GRN / SRN (' + fmt(legacyCap) + ') - open the bill and Save to reduce it');
     if (!b.po) {
       if (amt >= num(st.poFrom)) f.push('No PO for bill above PO limit');
       if (!b.vendor || !b.line) f.push('Vendor / budget line missing');
@@ -735,7 +759,7 @@ function recalc() {
       if (p.closedOn && b.date > p.closedOn.slice(0, 10)) f.push('PO closed');
       const recvOver = r.received > 0 ? r.billedToDate / r.received - 1 : (r.billedToDate > 0 ? Infinity : 0);
       const poOver = r.poValue > 0 ? r.billedToDate / r.poValue - 1 : 0;
-      if (Math.max(recvOver, poOver) > num(st.billTol) + 1e-9 && !b.varBy) f.push('Above received / PO by more than ' + pct(num(st.billTol)) + ' - variance approval needed');
+      if (KUNRules.needsVarianceApproval(recvOver, poOver, num(st.billTol)) && !b.varBy) f.push('Above received / PO by more than ' + pct(num(st.billTol)) + ' - variance approval needed');
       if (adj > r.advBalBefore + 1) f.push('Advance adjusted more than balance');
       if (num(p.adv) > 0 && r.advBalBefore > 1 && adj + 1 < Math.min(amt * num(p.adv), r.advBalBefore)) f.push('Advance not adjusted as per PO terms');
       if (b.invDate && b.invDate < p.date) f.push('Invoice dated before PO');
@@ -745,7 +769,7 @@ function recalc() {
     if (b.invNo && invKey[k] > 1) f.push('Duplicate invoice no.');
     if (!b.invNo) f.push('Invoice no. missing');
     r.match = f.length ? f.join('; ') : 'OK';
-    r.pay = b.payDate ? 'Paid' : b.audit === 'Clear' ? 'Cleared - awaiting payment' : b.audit === 'Hold' ? 'On hold' : b.audit === 'Query' ? 'Query' : 'Awaiting audit';
+    r.pay = KUNRules.billPayStatus(b);
     r.paid = b.payDate ? r.net : 0;
     if (pc) { pc.billed += amt; pc.advAdj += adj; if (b.payDate) pc.paidNet += r.net; }
     C.bill[b.no] = r;
@@ -756,11 +780,11 @@ function recalc() {
   S.pos.slice().sort((a, b) => (a.date + a.no).localeCompare(b.date + b.no)).forEach(p => {
     const c = C.po[p.no];
     const v = c.value;
-    c.docType = v > num(st.qcpoAbove) ? 'PO-cum-Quotation' : v >= num(st.poFrom) ? 'PO' : 'PO (below PO limit)';
-    c.approval = v <= num(st.masoolLimit) ? 'Maintenance Masool' : v <= num(st.masoolHoaLimit) ? 'Masool + Head of Accounts' : 'Masool + Head of Accounts + Sigat';
+    c.docType = KUNRules.docTypeFor(v, { qcpoAbove: num(st.qcpoAbove), poFrom: num(st.poFrom) });
+    c.approval = KUNRules.approvalFor(v, { masoolLimit: num(st.masoolLimit), masoolHoaLimit: num(st.masoolHoaLimit) });
     c.above = c.lines.filter(l => /^Above/.test(l.price)).length;
     c.notMpl = c.lines.filter(l => l.price === 'Not on MPL').length;
-    c.priceAppr = c.above ? (v <= num(st.masoolLimit) ? 'Head of Accounts' : 'Sigat') : '';
+    c.priceAppr = KUNRules.priceApprovalFor(v, c.above > 0, { masoolLimit: num(st.masoolLimit) });
     c.effective = p.cancel ? 0 : p.shortClosed ? c.received : v;
     const m = p.date ? +p.date.slice(5, 7) : 1;
     c.ytd = ytdBudget(p.line, m);
@@ -804,7 +828,7 @@ function recalc() {
     const pc = C.po[a.po], r = C.adv[a.no];
     r.balance = pc ? pc.advPaid - pc.advAdj : 0;
     r.days = a.paidDate ? daysBetween(a.paidDate, reportDate()) : null;
-    r.status = !a.paidDate ? 'Not paid yet' : r.balance <= 0.5 ? 'Adjusted' : r.days > num(st.advDays) ? 'Not adjusted - follow up' : 'Being adjusted';
+    r.status = KUNRules.advanceStatus(a.paidDate, r.balance, r.days, num(st.advDays));
   });
 
   // Job cards
@@ -938,9 +962,9 @@ function exceptions() {
   const mk = curMK();
   const openPO = S.pos.filter(p => !p.cancel && !p.closedOn);
   const hk = hkNorms(), ln = linenPar();
-  const mplExpired = S.mpl.rows.filter(r => r.to && r.to < reportDate()).length;
+  const mplExpired = mplRows().filter(r => r.to && r.to < reportDate()).length;
   const L = [
-    ['MPL not approved / locked, or rates expired', (S.mpl.status !== 'Approved' ? 1 : 0) + mplExpired, 'MPL - Head of Accounts to approve', 'mpl'],
+    ['Item rates waiting for approval, or rates expired', pendingRates().length + mplExpired, 'Items & MPL - Head of Accounts to approve the rates', 'mpl'],
     ['POs over budget (need budget revision before issue)', openPO.filter(p => C.po[p.no].budget === 'OVER BUDGET').length, 'PO Register - Internal Auditor / Sigat', 'po'],
     ['PO lines above MPL rate tolerance', openPO.reduce((a, p) => a + C.po[p.no].above, 0), 'PO lines - HoA / Sigat approval', 'po'],
     ['PO lines for items not on MPL', openPO.reduce((a, p) => a + C.po[p.no].notMpl, 0), 'PO lines - add rate to MPL', 'po'],
@@ -955,7 +979,8 @@ function exceptions() {
     ['GRN lines not OK (no PO, excess, not on PO, rejected)', C.grn.filter(r => r.check !== 'OK').length, 'GRN - GRN Officer', 'grn'],
     ['SRN lines not OK (no PO, excess, PO closed, signatures missing)', C.srn.filter(r => r.check !== 'OK').length, 'SRN - Masool', 'srn'],
     ['Bills failing 3-way match', S.bills.filter(b => C.bill[b.no].match !== 'OK').length, 'Bills - Internal Auditor', 'bills'],
-    ['Bills on hold / query', S.bills.filter(b => !b.payDate && (b.audit === 'Hold' || b.audit === 'Query')).length, 'Bills - Masool to resolve', 'bills'],
+    // Phase 4 (F4/U2): same status rule as the Bills register (C.bill[].pay), so the two cannot disagree
+    ['Bills on hold / query', S.bills.filter(b => /On hold|Query/.test(C.bill[b.no].pay)).length, 'Bills - Masool to resolve', 'bills'],
     ['Issue slips not OK (exceeds stock, no job card)', C.iss.filter(r => r.check !== 'OK').length, 'Issues', 'issues'],
     ['Stock items at or below re-order level', Object.values(C.stock).filter(s => /Re-order/.test(s.status)).length, 'Stores - raise PO', 'stores'],
     ['Negative stock / count differences', Object.values(C.stock).filter(s => /Negative|Count difference/.test(s.status)).length, 'Stores - post adjustment with approval', 'stores'],
@@ -998,7 +1023,8 @@ function opts(list, val, blank = true) {
   }).join('');
 }
 const itemOpts = filter => S.items.filter(filter || (() => true)).map(i => [i.code, i.code + ' - ' + i.name]);
-const vendorOpts = () => S.vendors.filter(v => v.avl === 'Y').map(v => v.name);
+const vendorOpts = () => S.vendors.map(v => v.name);
+const vendorPairs = () => S.vendors.map(v => [v.name, v.name + (v.avl === 'Y' ? '' : ' (not AVL - approve on Vendors first)')]);
 const lineOpts = () => S.budgetLines.map(b => [b.code, b.code + ' - ' + b.name]);
 const monthOpts = () => MON.map((m, i) => [i + 1, m + ' ' + S.settings.year]);
 
@@ -1009,21 +1035,53 @@ function view(id, title, module, group, fmtNo, render) { VIEWS[id] = { id, title
 
 // Navigation is kept in page state (the artifact viewer passes only a plain #token from the link, used for the first view).
 function go(id) { closeModal(); route(id); }
+// Page history for the Back button and the Escape key.
+let HIST = [], NAV_BACK = false;
 function route(want) {
   if (!U) return SHARED ? renderGate() : renderLogin();
   let id = want || VIEW || (location.hash.match(/^#\/?(\w+)$/) || [])[1];
   if (!id || !VIEWS[id] || !canSee(VIEWS[id].module)) id = homeView();
+  if (VIEW && id !== VIEW && !NAV_BACK) { HIST.push(VIEW); if (HIST.length > 50) HIST.shift(); }
+  NAV_BACK = false;
   VIEW = id; render();
 }
+ACT.back = () => {
+  closeModal();
+  const prev = HIST.pop();
+  if (!prev) return;
+  NAV_BACK = true; route(prev);
+};
+// The exception lines that need action, with the page each one opens.
+ACT.exceptionList = () => {
+  const lines = exceptions().filter(e => e.n > 0);
+  if (!lines.length) return toast('No exception needs action.', 'ok');
+  modal('Exception lines to act on (' + lines.length + ')',
+    '<p class="muted">Each line should be zero. Open the page, act or record the reason.</p>' +
+    '<table class="ex">' + lines.map(e => '<tr><td class="n">' + e.i + '</td><td>' + esc(e.t) + '<small>' + esc(e.w) + '</small></td><td class="n"><span class="flag bad">' + e.n + '</span></td><td><button class="btn ghost sm" data-act="goto" data-id="' + e.v + '">Open</button></td></tr>').join('') + '</table>',
+    [{ l: 'Close', cls: '', fn: () => closeModal() }], { wide: true });
+};
 function homeView() { return ['dashboard', 'desk', 'po', 'grn', 'bills', 'issues', 'laundry', 'guide'].find(v => VIEWS[v] && canSee(VIEWS[v].module)) || 'guide'; }
 
+// Keyboard focus survives a redraw: remember the menu item (or element with an id) that had focus and put it back.
+function focusMark() {
+  const el = document.activeElement; if (!el || !el.closest) return null;
+  const nav = el.closest('#nav a[data-id]'); if (nav) return { nav: nav.dataset.id };
+  return el.id && el.closest('#app') ? { id: el.id } : null;
+}
+function focusRestore(m) {
+  if (!m || document.querySelector('[data-autofocus]')) return;
+  const el = m.nav ? document.querySelector('#nav a[data-id="' + m.nav + '"]') : document.getElementById(m.id);
+  if (el) el.focus({ preventScroll: true });
+}
 function render() {
   const v = VIEWS[VIEW];
+  const mark = focusMark();
   $('#app').innerHTML = shell();
   const main = $('#main');
-  try { main.innerHTML = `<div class="vhead"><div><span class="fmt">${esc(v.fmtNo)}</span><h1>${esc(v.title)}</h1></div><div class="vtools" id="vtools"></div></div>` + v.render(); }
+  try { main.innerHTML = `<div class="vhead"><div>${HIST.length ? '<button class="btn ghost sm" data-act="back" title="Back to the previous page (Esc)">&larr; Back</button> ' : ''}<span class="fmt">${esc(v.fmtNo)}</span><h1>${esc(v.title)}</h1></div><div class="vtools" id="vtools"></div></div>` + v.render(); }
   catch (e) { console.error(e); main.innerHTML = `<div class="card bad">Something went wrong showing this page: ${esc(e.message)}</div>`; }
   document.querySelectorAll('[data-autofocus]').forEach(x => x.focus());
+  focusRestore(mark);
   window.scrollTo(0, 0);
 }
 function shell() {
@@ -1050,11 +1108,23 @@ ACT.toggleNav = () => $('#nav').classList.toggle('open');
 /* ---------- tables ---------- */
 // cols: [{h, v:(row)=>html, x:(row)=>export value, n:true numeric, w}]
 const TABLES = {};
+// Phase 5 (gap U3): what a page with no rows yet should tell the user to do first.
+const EMPTY_HINT = {
+  srn: 'No service receipts yet. Prepare one after the service is done, against an approved PO.',
+  adv: 'No advances yet. An advance can be requested only from a PO whose terms allow one.',
+  cpv: 'No cash vouchers yet. Cleared bills of up to the cash-PV limit can be grouped here on one voucher.',
+  iss: 'No issue slips yet. Stock is issued to a job card or a department, and needs a counted stock balance.',
+  jobs: 'No job cards yet. Log a request on the Service desk or here; a job card number is issued.',
+  ppm: 'No PPM or AMC equipment yet. Add the equipment with its frequency and due date, or import it from Excel.',
+  laundry: 'No laundry hand-overs yet. Record the linen handed to the laundry and its return here.',
+  hk: 'No housekeeping norms yet. Set the norm for each consumable in Items; consumption is checked against it here.',
+  linen: 'No linen par levels yet. Set the par per bed for each linen item in Items.',
+};
 function table(id, cols, rows, o = {}) {
   TABLES[id] = { cols, rows, name: o.name || id };
   const head = cols.map(c => `<th class="${c.n ? 'n' : ''}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${esc(c.h)}</th>`).join('');
   const body = rows.length ? rows.map((r, i) => `<tr ${o.click ? `data-act="${o.click}" data-id="${esc(o.key ? o.key(r) : i)}" class="click ${o.rowCls ? o.rowCls(r) : ''}"` : (o.rowCls ? `class="${o.rowCls(r)}"` : '')}>${cols.map(c => `<td class="${c.n ? 'n' : ''}${c.w ? ' wrap' : ''}">${c.v(r) ?? ''}</td>`).join('')}</tr>`).join('')
-    : `<tr><td colspan="${cols.length}" class="empty">${esc(o.empty || 'Nothing here yet.')}</td></tr>`;
+    : `<tr><td colspan="${cols.length}" class="empty">${esc(o.empty || EMPTY_HINT[id] || 'Nothing here yet.')}</td></tr>`;
   const foot = o.foot ? `<tfoot><tr>${o.foot.map((f, i) => `<td class="${cols[i] && cols[i].n ? 'n' : ''}">${f ?? ''}</td>`).join('')}</tr></tfoot>` : '';
   const tools = o.noTools ? '' : `<div class="ttools"><input type="search" placeholder="Filter..." oninput="App.filter('${id}', this.value)"><span class="cnt">${rows.length} row${rows.length === 1 ? '' : 's'}</span><button class="btn ghost sm" data-act="csv" data-id="${id}">Export to Excel (CSV)</button></div>`;
   return `${tools}<div class="tw"><table id="t_${id}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>`;
@@ -1088,7 +1158,7 @@ function field(f, obj) {
     case 'chk': inp = `<label class="chk"><input type="checkbox" id="${id}" data-k="${f.k}" data-t="chk"${v ? ' checked' : ''}${dis}> ${esc(f.cl || '')}</label>`; break;
     case 'pct': inp = `<input id="${id}" data-k="${f.k}" data-t="pct" inputmode="decimal" value="${v === null || v === undefined || v === '' ? '' : +(num(v) * 100).toFixed(4)}"${dis}><span class="unit">%</span>`; break;
     case 'num': inp = `<input id="${id}" data-k="${f.k}" data-t="num" inputmode="decimal" value="${v === null || v === undefined ? '' : esc(v)}"${dis}>`; break;
-    case 'date': inp = `<input type="date" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 10))}"${dis}>`; break;
+    case 'date': inp = `<input type="date" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 10))}"${f.max === 'today' ? ` max="${isoDate(new Date())}"` : ''}${dis}>`; break;
     case 'dt': inp = `<input type="datetime-local" id="${id}" data-k="${f.k}" value="${esc((v || '').slice(0, 16))}"${dis}>`; break;
     case 'ro': inp = `<div class="ro">${f.html !== undefined ? f.html : esc(v)}</div>`; break;
     default: inp = `<input id="${id}" data-k="${f.k}" value="${esc(v)}"${f.list ? ` list="dl_${f.k}"` : ''}${dis}>` + (f.list ? `<datalist id="dl_${f.k}">${f.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : '');
@@ -1160,6 +1230,13 @@ function closeModal() {
 ACT.closeModal = closeModal;
 function confirmBox(title, text, okLabel, fn, o = {}) {
   modal(title, `<p>${text}</p>${o.input ? `<div class="grid">${o.input}</div>` : ''}`, [{ l: okLabel, cls: o.danger ? 'danger' : 'pri', fn }]);
+}
+// Phase 3 (gap A3): destructive actions need the typed word, and show how many records they remove.
+const DATA_KINDS = ['pos', 'advances', 'grns', 'srns', 'bills', 'issues', 'jobs', 'laundry', 'ppm', 'items', 'vendors', 'rooms', 'users'];
+function recordCount(d) { return DATA_KINDS.reduce((n, k) => n + ((d && Array.isArray(d[k])) ? d[k].length : 0), 0); }
+function typedConfirm(title, text, word, okLabel, fn) {
+  modal(title, `<p>${text}</p><div class="grid"><div class="fld"><label>Type <b>${esc(word)}</b> to confirm</label><input id="cfmWord" autocomplete="off"></div></div>`,
+    [{ l: okLabel, cls: 'danger', fn: () => { if ((($('#cfmWord') || {}).value || '').trim() !== word) return toast(`Type ${word} exactly to confirm.`, 'bad'); fn(); } }]);
 }
 function refresh() { recalc(); render(); }
 
@@ -1264,7 +1341,13 @@ document.addEventListener('click', e => {
   a(el.dataset.id, el, e);
   if (el.closest('#nav')) $('#nav').classList.remove('open');
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('open')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('#modal').classList.contains('open')) return closeModal();
+  const t = document.activeElement && document.activeElement.tagName;
+  if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+  if (HIST.length) ACT.back();
+});
 // Shown when the page is opened as a file instead of through the local server (no database is used then).
 function renderNoServer() {
   document.getElementById('app').innerHTML = `<div class="login"><div class="lcard"><div class="lbrand">Faiz E Husaini - Karbala (KUN)</div><h1>Maintenance &amp; Housekeeping</h1>
@@ -1307,7 +1390,7 @@ view('dashboard', 'Dashboard & exceptions', 'Dashboard', 'Overview', 'MH-24', ()
   const tot = k => bt.reduce((a, r) => a + (r[k] || 0), 0);
   setTimeout(() => { const t = $('#vtools'); if (t) t.innerHTML = monthPicker(); });
   return `<div class="tiles">
-    ${tile('Exception lines to act on', nEx, 'of ' + ex.length + ' checks', nEx ? 'bad' : 'ok')}
+    <div class="tile ${nEx ? 'bad' : 'ok'}" data-act="exceptionList" title="Show the lines to act on"><span>Exception lines to act on</span><b>${nEx}</b><small>of ${ex.length} checks - click to see them</small></div>
     ${tile('Open job cards', openJobs.length, overdue + ' overdue', overdue ? 'bad' : '', 'desk')}
     ${tile('Bills awaiting audit', awaitB.length, fmt(awaitB.reduce((a, b) => a + num(b.amount), 0)) + ' IQD', awaitB.length ? 'warn' : '', 'audit')}
     ${tile('Cleared, awaiting payment', fmt(cleared.reduce((a, b) => a + C.bill[b.no].net, 0)), cleared.length + ' bill(s), IQD', '', 'audit')}
@@ -1338,7 +1421,7 @@ view('dashboard', 'Dashboard & exceptions', 'Dashboard', 'Overview', 'MH-24', ()
     ['Closing store stock value (IQD)', fmt(Object.values(C.stock).reduce((a, s) => a + s.value, 0))],
     ['Laundry pieces pending with laundry', fmt(linenPar().reduce((a, r) => a + r.pending, 0))],
     ['Job cards closed within target (month)', (() => { const d = S.jobs.filter(j => j.completed && mkey(j.completed) === curMK()); return d.length ? pct(d.filter(j => C.jobs[j.no].inTarget).length / d.length) : '-'; })()],
-    ['MPL status', flag(S.mpl.status === 'Approved' ? 'Approved v' + S.mpl.version : S.mpl.status)],
+    ['Item rates', flag(pendingRates().length ? pendingRates().length + ' waiting for approval' : 'All approved')],
   ])}</section>
   <section class="card"><h3>C. Exceptions - each line should be zero</h3>
   <table class="ex">${ex.map(e => `<tr data-act="goto" data-id="${e.v}" class="click"><td class="n">${e.i}</td><td>${esc(e.t)}<small>${esc(e.w)}</small></td><td class="n"><span class="flag ${e.n ? 'bad' : 'ok'}">${e.n}</span></td></tr>`).join('')}</table></section>
@@ -1354,7 +1437,7 @@ function slaText(j) {
 const hrs = h => h < 1 ? Math.max(1, Math.round(h * 60)) + ' min' : h < 48 ? Math.floor(h) + ' h ' + String(Math.round((h % 1) * 60)).padStart(2, '0') + ' m' : Math.round(h / 24) + ' days';
 const PRI = { High: 1, Normal: 2 };
 
-view('desk', 'Service desk & rooms', 'Rooms', 'Overview', 'MH-22', () => {
+view('desk', 'Service desk & rooms', 'Rooms', 'Stores', 'MH-22', () => {
   const ed = canEdit('Job Cards');
   const open = S.jobs.filter(j => C.jobs[j.no].status !== 'Closed');
   const col = (title, list, cls) => `<div class="kcol ${cls}"><h4>${title} <span>${list.length}</span></h4>${list.sort((a, b) => (PRI[a.priority] - PRI[b.priority]) || a.reported.localeCompare(b.reported)).map(jobCard).join('') || '<p class="muted sm">None</p>'}</div>`;
@@ -1525,23 +1608,23 @@ ACT.editPPM = id => {
   modal(isNew ? 'Add equipment' : p.asset, fields([
     { k: 'asset', l: 'Equipment / asset', t: 'text', ed, req: true }, { k: 'tag', l: 'Asset tag', t: 'text', ed }, { k: 'location', l: 'Location', t: 'text', ed },
     { k: 'activity', l: 'Activity', t: 'text', ed }, { k: 'freq', l: 'Frequency', t: 'sel', o: S.lists.freqs, ed, blank: false }, { k: 'doneBy', l: 'Done by', t: 'sel', o: S.lists.doneBy, ed },
-    { k: 'amcVendor', l: 'AMC vendor / contractor', t: 'sel', o: vendorOpts(), ed }, { k: 'amcPo', l: 'AMC / contract PO no.', t: 'sel', o: S.pos.map(x => x.no), ed },
+    { k: 'amcVendor', l: 'AMC vendor / contractor', t: 'sel', o: vendorPairs(), ed }, { k: 'amcPo', l: 'AMC / contract PO no.', t: 'sel', o: S.pos.map(x => x.no), ed },
     { k: 'amcExpiry', l: 'AMC expiry', t: 'date', ed }, { k: 'last', l: 'Last done', t: 'date', ed }, { k: 'remarks', l: 'Remarks', t: 'area', full: true, ed },
   ], p), [ed && { l: 'Save', cls: 'pri', fn: b => { readInto(b, p); if (!p.asset) return toast('Name the equipment.', 'bad'); if (isNew) S.ppm.push(p); closeModal(); commit(isNew ? 'PPM equipment added' : 'PPM updated', p.asset); render(); } }]);
 };
 
 /* ===== Guide ===== */
-view('guide', 'How the process works', 'Guide', 'Overview', 'Guide', () => `
+view('guide', 'How the process works', 'Guide', 'Stores', 'Guide', () => `
   <section class="card"><h3>The flow</h3><ol class="flow">
-  <li><b>Budget</b> by line, phased by month (MH-02). Lines with a zaereen-day basis (VAR) follow zaereen-days; other lines follow calendar days.</li>
-  <li><b>Items, vendors and the MPL</b> (MH-03/04/05) are kept by the Head of Accounts. The MPL is approved with the password and locked.</li>
-  <li><b>Which document?</b> Below ${fmt(S.settings.poFrom)} IQD: bill + payment voucher, no PO. From ${fmt(S.settings.poFrom)} IQD: Purchase Order. The app turns it into a PO-cum-Quotation (minimum ${S.settings.minQuotes} quotations) when the value calls for it, and prints the signatures needed.</li>
-  <li><b>Budget check</b> by the Internal Auditor before the PO is issued. Over budget: Sigat approves a revision first.</li>
-  <li><b>Advance</b> only if the PO terms provide for it (MH-09/10).</li>
-  <li><b>Goods: GRN</b> by the GRN Officer, only against an approved PO (MH-11/12). <b>Services: SRN</b> prepared by the Masool, confirmed by the user in charge (MH-13/14).</li>
-  <li><b>Bill</b> entered within 3 working days with the payment voucher (MH-15/16A). The app runs the 3-way match.</li>
-  <li><b>Pre-payment audit</b> (MH-16): Clear / Hold / Query. Accounts pays only Clear bills.</li>
-  <li><b>Close PO</b> when fully received and billed. A closed PO is locked for ever.</li>
+  <li><b><span class="gl" style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="budget">Budget</span></b> by line, phased by month (MH-02). Lines with a zaereen-day basis (VAR) follow zaereen-days; other lines follow calendar days.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="items">Items, vendors and the MPL</span></b> (MH-03/04/05) are kept by the Head of Accounts. The MPL is approved with the password and locked.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Which document?</span></b> Below ${fmt(S.settings.poFrom)} IQD: bill + payment voucher, no PO. From ${fmt(S.settings.poFrom)} IQD: Purchase Order. The app turns it into a PO-cum-Quotation (minimum ${S.settings.minQuotes} quotations) when the value calls for it, and prints the signatures needed.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Budget check</span></b> by the Internal Auditor before the PO is issued. Over budget: Sigat approves a revision first.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="adv">Advance</span></b> only if the PO terms provide for it (MH-09/10).</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="grn">Goods: GRN</span></b> by the GRN Officer, only against an approved PO (MH-11/12). <b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="srn">Services: SRN</span></b> prepared by the Masool, confirmed by the user in charge (MH-13/14).</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="bills">Bill</span></b> entered within 3 working days with the payment voucher (MH-15/16A). The app runs the 3-way match.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="bills">Pre-payment audit</span></b> (MH-16): Clear / Hold / Query. Accounts pays only Clear bills.</li>
+  <li><b><span style="cursor:pointer;text-decoration:underline" data-act="goto" data-id="po">Close PO</span></b> when fully received and billed. A closed PO is locked for ever.</li>
   <li>Alongside: issue slips and stores (MH-17/18), housekeeping norms (MH-19), linen and laundry (MH-20/21), service desk and job cards (MH-22), PPM and AMC (MH-23), dashboard (MH-24).</li></ol></section>
   <div class="two"><section class="card"><h3>Golden rules</h3><ul>
   <li>No PO, no purchase of ${fmt(S.settings.poFrom)} IQD or more. No PO, no GRN. No SRN, no payment for labour or services.</li>
@@ -1622,6 +1705,8 @@ App.poLineCalc = el => {
   let t = 0; document.querySelectorAll('#le_pol tbody tr').forEach(x => { t += num(x.querySelector('[data-lk=qty]').value) * num(x.querySelector('[data-lk=rate]').value); });
   const tv = $('#poTotal'); if (tv) tv.textContent = fmt(t);
 };
+// Advance vouchers raised against a PO (several are allowed, up to the PO's advance %).
+const advancesOn = poNo => S.advances.filter(a => a.po === poNo);
 ACT.editPO = no => {
   const p = findPO(no), c = C.po[no];
   const locked = p.cancel || !!p.closedOn;
@@ -1641,14 +1726,14 @@ ACT.editPO = no => {
   ${p.emergency ? `<p class="note warn">Emergency PO: the number was issued before the order. Complete, budget-check and approve it on the next working day; receive the goods on a GRN against it.${c.signatures.length > 1 || c.approval !== 'Maintenance Masool' ? ' The Head of Accounts must be informed by phone before ordering.' : ''}</p>` : ''}
   ${locked ? `<p class="note">${p.cancel ? 'Cancelled - the number is kept and the PO no longer counts against the budget.' : `Closed on ${fdt(p.closedOn)} by ${esc(p.closedBy)}${p.shortClosed ? ' (short-closed: ' + esc(p.shortReason) + ')' : ''}. A closed PO is locked and can never be re-opened.`}</p>` : ''}
   <h4>PO header</h4>${fields([
-    { k: 'date', l: 'PO date', t: 'date', ed: edH, req: 1 }, { k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorOpts(), ed: edH, req: 1 },
+    { k: 'date', l: 'PO date', t: 'date', ed: edH, req: 1 }, { k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorPairs(), ed: edH, req: 1 },
     { k: 'line', l: 'Budget line (one per PO)', t: 'sel', o: lineOpts(), ed: edH, req: 1 }, { k: 'delivery', l: 'Delivery / completion date', t: 'date', ed: edH },
     { k: 'subject', l: 'Subject / description of work', t: 'area', full: true, ed: edH, req: 1 }, { k: 'place', l: 'Place of delivery / work', t: 'text', ed: edH },
     { k: 'emergency', l: 'Emergency', t: 'chk', cl: 'Emergency purchase (ordered before approval)', ed: edH },
   ], p)}
   <h4>Item lines (MH-07) - at most 20 lines</h4><datalist id="dl_items">${S.items.map(i => `<option value="${esc(i.code + ' - ' + i.name)}">`).join('')}</datalist>${linesEditor('pol', lineCols, p.lines, edL, 20)}
   <h4>Payment terms</h4>${fields([
-    { k: 'mode', l: 'Payment mode', t: 'sel', o: S.lists.payModes, ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH },
+    { k: 'mode', l: 'Payment mode (cash only)', t: 'sel', o: ['Cash'], ed: edH }, { k: 'adv', l: 'Advance', t: 'pct', ed: edH && !advancesOn(p.no).length, hint: advancesOn(p.no).length ? 'Locked: advance vouchers exist for this PO' : '' },
     { k: 'del', l: 'On delivery / completion', t: 'pct', ed: edH }, { k: 'ret', l: 'Retention', t: 'pct', ed: edH },
     { k: 'retDays', l: 'Retention released after (days)', t: 'num', ed: edH }, { k: 'credit', l: 'Credit days after bill', t: 'num', ed: edH },
     { k: 'other', l: 'Other payment terms', t: 'area', full: true, ed: edH },
@@ -1667,13 +1752,16 @@ ACT.editPO = no => {
     { k: 'cancel', l: 'Cancel', t: 'chk', cl: 'Cancelled (number kept, row never deleted)', ed: edH },
     { k: 'remarks', l: 'Remarks / reason for cancellation', t: 'area', full: true, ed: edH },
   ], p)}
-  <div class="sum">Advances paid ${fmt(c.advPaid)} &middot; Received (GRN+SRN) ${fmt(c.received)} &middot; Billed ${fmt(c.billed)} &middot; Bills paid (net) ${fmt(c.paidNet)} &middot; Balance to receive ${fmt(c.balance)}</div>`;
+  <div class="sum">Advances paid ${fmt(c.advPaid)} &middot; Received (GRN+SRN) ${fmt(c.received)} &middot; Billed ${fmt(c.billed)} &middot; Bills paid (net) ${fmt(c.paidNet)} &middot; Balance to receive ${fmt(c.balance)}</div>`
+  + `<h4>Quantity status by item</h4><div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th class="n">Ordered</th><th class="n">Accepted (GRN + SRN)</th><th class="n">Billed</th><th class="n">Accepted, not billed</th><th class="n">Not yet received</th></tr></thead><tbody>${c.lines.filter(l => l.item).map(l => { const acc = c.recQty[l.item] || 0, bil = c.billedQty[l.item] || 0; return `<tr><td>${esc(l.item)}</td><td>${esc(itemName(l.item))}</td><td class="n">${fmtQ(l.qty)}</td><td class="n">${fmtQ(acc)}</td><td class="n">${fmtQ(bil)}</td><td class="n">${fmtQ(acc - bil)}</td><td class="n">${fmtQ(Math.max(0, l.qty - acc))}</td></tr>`; }).join('')}</tbody></table></div>`;
   modal('PO ' + no, body, [
     (edH || edL || edB) && { l: 'Save', cls: 'pri', fn: b => {
-      const before = JSON.stringify(p), wasCancel = p.cancel;
-      readInto(b, p);
+      const before = JSON.stringify(p), wasCancel = p.cancel, oldAdv = num(p.adv);
+      readInto(b, p); p.mode = 'Cash';
+      if (advancesOn(p.no).length && Math.abs(num(p.adv) - oldAdv) > 1e-9) { p.adv = oldAdv; return toast('Advance % in PO cannot be modified once an advance voucher has been generated against that PO.', 'bad'); }
       if (edH) p.quotes = [0, 1, 2].map(i => ({ v: $('#qv' + i).value, a: numOrNull($('#qa' + i).value) })).filter(x => x.v || x.a);
       if (edL) { const ls = readLines('pol', ['qty', 'rate']); if (ls.length > 20) return toast('At most 20 lines on one PO.', 'bad'); p.lines = ls.map(l => ({ item: resolveItemText(l.item, p, true), qty: num(l.qty), rate: num(l.rate), spec: l.spec || '' })); }
+      if (p.vendor && (vendor(p.vendor) || {}).avl !== 'Y' && !p.cancel) return toast('This vendor is not approved (AVL). Approve it on the Vendors page before it can be used on a PO.', 'bad');
       if (p.cancel && !p.remarks) { p.cancel = wasCancel; return toast('Give the reason for cancellation in Remarks.', 'bad'); }
       if (p.cancel && !wasCancel && S.advances.some(a => a.po === p.no && a.paidDate)) toast('An advance was paid on this PO - it must be recovered.', 'warn');
       commit(p.cancel && !wasCancel ? 'PO cancelled' : (JSON.stringify(p) !== before ? 'PO updated' : ''), p.no + (p.cancel ? ' - ' + p.remarks : ''));
@@ -1731,9 +1819,18 @@ ACT.editADV = no => {
     { k: 'date', l: 'Request date', t: 'date', ed: edM }, { k: 'po', l: 'PO no.', t: 'sel', o: openPOs().filter(p => num(p.adv) > 0 || p.no === a.po).map(p => [p.no, p.no + ' - ' + p.vendor + ' (' + pct(p.adv) + ')']), ed: edM, req: 1 },
     { k: 'amount', l: 'Amount requested (IQD)', t: 'num', ed: edM, req: 1 }, { k: 'reqBy', l: 'Requested by', t: 'text', ed: edM },
     { k: 'apprBy', l: 'Approved by (same authority as the PO)', t: 'text', ed: edM }, { k: 'remarks', l: 'Remarks', t: 'text', ed: edM },
-    { k: 'paidDate', l: 'Paid date (Accounts)', t: 'date', ed: edA }, { k: 'pvRef', l: 'PV / payment reference (Accounts)', t: 'text', ed: edA },
+    { k: 'paidDate', l: 'Paid date (Accounts)', t: 'date', max: 'today', ed: edA }, { k: 'pvRef', l: 'PV / payment reference (Accounts)', t: 'text', ed: edA },
   ], a), [(edM || edA) && { l: 'Save', cls: 'pri', fn: b => {
-    const o = Object.assign({}, a); readInto(b, o);
+      const o = Object.assign({}, a); readInto(b, o);
+    if (o.po) {
+      const pp = findPO(o.po), ppc = pp && C.po[pp.no];
+        if (pp && ppc) {
+          const others = S.advances.filter(x => x.po === pp.no && x.no !== a.no).reduce((s, x) => s + num(x.amount), 0);
+          const limit = Math.max(0, ppc.value * num(pp.adv) - others);
+          if (num(o.amount) > limit + 0.5) return toast('Too much advance for ' + pp.no + ': the PO allows ' + pct(pp.adv) + ' of ' + fmt(ppc.value) + ' = ' + fmt(ppc.value * num(pp.adv)) + ', of which ' + fmt(others) + ' is already advanced. Up to ' + fmt(limit) + ' can be requested now.', 'bad');
+        }
+      }
+    if (edA && futureDate(o.paidDate)) return toast('The paid date cannot be in the future. Enter today or an earlier date.', 'bad');
     if (edA && o.paidDate && !a.paidDate) { recalc(); const cc = C.adv[no]; if (cc.check !== 'OK' && !/Approval/.test(cc.check)) return toast('Not paid: ' + cc.check, 'bad'); }
     Object.assign(a, o); commit('Advance updated', no); render(); ACT.editADV(no);
   } }, canSee('Advance Print') && { l: 'Print / export (MH-10)', fn: () => printADV(no) }]);
@@ -1770,8 +1867,20 @@ ACT.newGRN = async () => {
   const g = { no, date: isoDate(new Date()), po: '', challan: '', by: U.name, remarks: '', lines: [] };
   S.grns.push(g); commit('GRN number issued', g.no); render(); ACT.editGRN(g.no);
 };
-App.grnPO = sel => { const g = S.grns.find(x => x.no === sel.dataset.doc); g.noPo = sel.value === '__NOPO__'; g.po = g.noPo ? '' : sel.value; const lines = readLines('grl', ['recd', 'acc']); g.lines = lines; ACT.editGRN(g.no); };
+// Value of a receipt without a PO: accepted quantity x MPL rate (the basis of the PO-limit rule).
+const noPoValue = lines => lines.reduce((a, l) => { const m = mplRate(l.item, ''); return a + num(l.acc) * (m ? m.rate : 0); }, 0);
+App.grnPO = sel => {
+  const g = S.grns.find(x => x.no === sel.dataset.doc), lines = readLines('grl', ['recd', 'acc']);
+  g.lines = lines;
+  if (sel.value === '__NOPO__' && noPoValue(lines) >= num(S.settings.poFrom)) {
+    toast('Not allowed: these goods are worth ' + fmt(noPoValue(lines)) + ' IQD, at or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD). Choose an approved PO.', 'bad');
+    return ACT.editGRN(g.no);
+  }
+  g.noPo = sel.value === '__NOPO__'; g.po = g.noPo ? '' : sel.value;
+  ACT.editGRN(g.no);
+};
 App.srnPO = sel => { const s = S.srns.find(x => x.no === sel.dataset.doc); s.po = sel.value; s.lines = readLines('srl', ['qty']); ACT.editSRN(s.no); };
+ACT.newItemFromGRN = () => ACT.editItem('');
 ACT.editGRN = no => {
   const g = S.grns.find(x => x.no === no), p = findPO(g.po);
   const billed = S.bills.some(b => (b.refs || '').includes(no));
@@ -1781,24 +1890,25 @@ ACT.editGRN = no => {
   const rows = C.grn.filter(r => r.g.no === no);
   modal('GRN ' + no, (billed ? '<p class="note">A bill quotes this GRN - it can no longer be changed.</p>' : '') + `<div class="grid"><div class="fld"><label>PO no. (approved POs only) <i>*</i></label><select data-doc="${esc(no)}" onchange="App.grnPO(this)" ${ed ? '' : 'disabled'}>${opts([['__NOPO__', 'No PO - purchase below the PO limit (reason and approver needed)']].concat(openPOs().filter(x => x.approvedBy || x.no === g.po).map(x => [x.no, x.no + ' - ' + x.vendor])), g.noPo ? '__NOPO__' : g.po)}</select></div></div>`
     + fields([{ k: 'date', l: 'Date received', t: 'date', ed }, { k: 'challan', l: 'Challan / delivery note no.', t: 'text', ed }, { k: 'by', l: 'Received by (GRN Officer)', t: 'text', ed }, { k: 'remarks', l: 'Remarks / reason for rejection', t: 'text', ed }], g)
-    + (p ? `<h4>PO lines - ${esc(p.vendor)}</h4>${poLinesHint(p, 'stock')}` : g.noPo ? fields([{ k: 'noPoReason', l: 'Reason for receiving without a PO', t: 'text', ed, req: 1 }, { k: 'noPoBy', l: 'Approved by (Maintenance Masool)', t: 'text', ed, req: 1 }], g) : '<p class="note warn">No PO - no GRN. Choose the approved PO first.</p>')
-    + `<h4>Items received</h4>` + linesEditor('grl', [
+    + (p ? `<h4>PO lines - ${esc(p.vendor)}</h4>${poLinesHint(p, 'stock')}` : g.noPo ? fields([{ k: 'vendor', l: 'Vendor (approved vendor list)', t: 'sel', o: vendorPairs(), ed, req: 1 }, { k: 'noPoReason', l: 'Reason for receiving without a PO', t: 'text', ed, req: 1 }, { k: 'noPoBy', l: 'Approved by (Maintenance Masool)', t: 'text', ed, req: 1 }], g) + (noPoValue(g.lines) >= num(S.settings.poFrom) ? '<p class="flag bad">At or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD): "No PO" is not allowed. Choose an approved PO.</p>' : '') : '<p class="note warn">No PO - no GRN. Choose the approved PO first.</p>')
+    + `<h4>Items received</h4>` + (ed ? `<p><button class="btn" type="button" data-act="newItemFromGRN">+ New item (not in the list)</button> <span class="small">Save the item, then reopen this GRN to pick it.</span></p>` : '') + linesEditor('grl', [
       { k: 'item', h: 'Item', t: 'sel', o: pl, w: 220 }, { k: 'recd', h: 'Qty received', t: 'num', w: 80 }, { k: 'acc', h: 'Qty accepted', t: 'num', w: 80 },
       { k: 'remarks', h: 'Remarks', t: 'text', w: 140 }, { h: 'Check', t: 'ro', ro: (l, i) => rows[i] ? flags(rows[i].check) : '' }], g.lines, ed && (!!p || !!g.noPo), 20),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
       readInto(b, g); g.lines = readLines('grl', ['recd', 'acc']).map(l => ({ item: l.item, recd: num(l.recd), acc: l.acc === null ? num(l.recd) : num(l.acc), remarks: l.remarks || '' }));
       if (!g.po && !g.noPo) return toast('No PO - no GRN. Choose the approved PO, or No PO.', 'bad');
       if (g.noPo) {
+        if (!g.vendor) return toast('Choose the vendor from the vendor list.', 'bad');
         if (!g.noPoReason || !g.noPoBy) return toast('Give the reason and who approved the receipt without a PO.', 'bad');
-        const value = g.lines.reduce((a, l) => { const m = mplRate(l.item, ''); return a + num(l.acc) * (m ? m.rate : 0); }, 0);
-        if (value >= num(S.settings.poFrom)) return toast('Above the PO limit (' + fmt(S.settings.poFrom) + ' IQD): a PO is needed.', 'bad');
+        const value = noPoValue(g.lines);
+        if (value >= num(S.settings.poFrom)) return toast('Not saved: these goods are worth ' + fmt(value) + ' IQD, at or above the PO limit (' + fmt(S.settings.poFrom) + ' IQD). A PO is needed.', 'bad');
       }
       commit('GRN saved', no); render(); ACT.editGRN(no); toast('Saved. Accepted quantity enters stock at the PO rate.', 'ok');
     } }, canSee('GRN Print') && { l: 'Print / export (MH-12)', fn: () => printGRN(no) }], { wide: true });
 };
 function printGRN(no) {
   const g = S.grns.find(x => x.no === no), rows = C.grn.filter(r => r.g.no === no), p = findPO(g.po) || {};
-  printDoc('GOODS RECEIPT NOTE (MH-12) ' + no, kv([['GRN no.', `<b>${esc(no)}</b>`, 'Date received', fdate(g.date)], ['PO no.', esc(g.po || (g.noPo ? 'No PO - ' + (g.noPoReason || '') : '')), 'Vendor', esc(p.vendor)], ['Challan / DN no.', esc(g.challan), 'Received by', esc(g.by)]])
+  printDoc('GOODS RECEIPT NOTE (MH-12) ' + no, kv([['GRN no.', `<b>${esc(no)}</b>`, 'Date received', fdate(g.date)], ['PO no.', esc(g.po || (g.noPo ? 'No PO - ' + (g.noPoReason || '') : '')), 'Vendor', esc(p.vendor || g.vendor || '')], ['Challan / DN no.', esc(g.challan), 'Received by', esc(g.by)]])
     + `<table class="lt"><thead><tr><th>Sr</th><th>Item code</th><th>Item</th><th>Unit</th><th class="n">PO qty</th><th class="n">Received</th><th class="n">Accepted</th><th class="n">Rejected</th><th>Check</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.l.item)}</td><td>${esc(itemName(r.l.item))}</td><td>${esc((item(r.l.item) || {}).unit)}</td><td class="n">${fmtQ(r.poQty)}</td><td class="n">${fmtQ(r.l.recd)}</td><td class="n">${fmtQ(r.l.acc)}</td><td class="n">${fmtQ(r.rej)}</td><td>${esc(r.check)}</td></tr>`).join('')}</tbody></table>
     <p>Remarks / rejection details: ${esc([g.remarks].concat(g.lines.map(l => l.remarks)).filter(Boolean).join('; '))}</p>` + sigs(['Delivered by (vendor)', 'Received - GRN Officer', 'Verified - Masool / user'])
     + '<p class="small">No PO - no GRN. Quantity above the PO is returned. Rejected goods go back with the vehicle or against a debit note. One copy to Accounts with the bill.</p>');
@@ -1849,6 +1959,19 @@ function printSRN(no) {
 }
 
 /* ===== MH-15 Bills, MH-16A Payment voucher ===== */
+// Bill lines (version 2.2): the line items of each bill, read-only. Entry of bills stays on the Bills page.
+view('billlines', 'Bill lines', 'Bill Lines', 'Bills & payment', 'MH-15 lines', () => {
+  const rows = [];
+  S.bills.forEach(b => (b.lines || []).forEach(l => rows.push({ bill: b.no, date: b.date, vendor: b.vendor, po: l.po || b.po || '', line: l.line, item: l.item, uom: l.uom, qty: num(l.qty), rate: num(l.rate), amount: num(l.qty) * num(l.rate), ref: l.ref, rem: l.rem })));
+  return '<p class="muted">The line items of each bill, as entered in version 2.2. Read only: change a bill on the Bills page.</p>' + table('billlines', [
+    { h: 'Bill', v: r => '<b>' + esc(r.bill) + '</b>', x: r => r.bill }, { h: 'Date', v: r => fdate(r.date), x: r => r.date },
+    { h: 'Vendor', v: r => esc(r.vendor), x: r => r.vendor }, { h: 'PO', v: r => esc(r.po), x: r => r.po },
+    { h: 'Budget line', v: r => esc(r.line), x: r => r.line }, { h: 'Item', v: r => esc(r.item) + ' <small>' + esc(itemName(r.item)) + '</small>', x: r => itemName(r.item), w: 180 },
+    { h: 'Unit', v: r => esc(r.uom), x: r => r.uom }, { h: 'Qty', n: 1, v: r => fmtQ(r.qty), x: r => r.qty },
+    { h: 'Rate (IQD)', n: 1, v: r => fmt(r.rate), x: r => r.rate }, { h: 'Amount (IQD)', n: 1, v: r => fmt(r.amount), x: r => r.amount },
+    { h: 'GRN / SRN', v: r => esc(r.ref), x: r => r.ref }, { h: 'Remarks', v: r => esc(r.rem), x: r => r.rem },
+  ], rows, { name: 'Bill lines', noTools: false });
+});
 view('bills', 'Bills & payment vouchers', 'Bills', 'Bills & payment', 'MH-15 / 16A', () => {
   const ed = canEdit('Bills') && may('Maintenance Masool');
   tools(ed ? `<button class="btn pri" data-act="newBILL">+ New bill entry number</button>` : '');
@@ -1866,11 +1989,107 @@ ACT.newBILL = async () => {
   const b = { no, date: isoDate(new Date()), invNo: '', invDate: '', po: '', vendor: '', line: '', refs: '', amount: null, advAdj: 0, otherDed: 0, audit: '', auditRemarks: '', auditDate: '', pv: '', payDate: '', payRef: '', desc: '', mode: '', checks: {} };
   S.bills.push(b); commit('Bill entry number issued', b.no); render(); ACT.editBILL(b.no);
 };
-App.billPO = sel => { const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b); b.po = sel.value; b.refs = ''; ACT.editBILL(b.no); };
+// Advance adjustable on a bill: PO advance % x bill amount, capped at the PAID advance vouchers on this PO not yet adjusted by other bills.
+// Accepted quantity of an item on the PO (GRN + SRN) not yet billed by other bills: the most this bill may claim.
+function itemCap(b, item) {
+  const p = findPO(b.po), pc = p && C.po[p.no];
+  if (!pc) return 0;
+  const billedOther = S.bills.filter(x => x.po === p.no && x.no !== b.no).reduce((s, x) => s + (x.items || []).filter(it => it.item === item).reduce((a, it) => a + num(it.qty), 0), 0);
+  return Math.max(0, (pc.recQty[item] || 0) - billedOther);
+}
+function billItemsHtml(b, p, edM) {
+  const pc = C.po[p.no];
+  const rows = pc.lines.filter(l => l.item).map(l => {
+    const acc = pc.recQty[l.item] || 0, cap = itemCap(b, l.item), mine = (b.items || []).find(x => x.item === l.item);
+    if (acc <= 0 && !mine) return null;
+    const q = mine ? mine.qty : cap;
+    return '<tr><td>' + esc(l.item) + '</td><td>' + esc(itemName(l.item)) + '</td><td>' + esc(l.unit) + '</td>' +
+      '<td class="n">' + fmtQ(acc) + '</td><td class="n">' + fmtQ(acc - cap) + '</td><td class="n"><b>' + fmtQ(cap) + '</b></td><td class="n"><input type="number" class="brt" data-item="' + esc(l.item) + '" data-po-rate="' + l.rate + '" value="' + (mine ? mine.rate : l.rate) + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.billQty()" style="width:100px"></td>' +
+      '<td class="n"><input type="number" class="bq" data-item="' + esc(l.item) + '" data-rate="' + l.rate + '" value="' + q + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.billQty()" style="width:90px"></td>' +
+      '<td class="n" data-amt="' + esc(l.item) + '">' + fmt(q * (mine ? mine.rate : l.rate)) + '</td></tr>';
+  }).filter(Boolean).join('');
+  return '<h4>Items billed (accepted quantities only)</h4>' + (rows
+    ? '<div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="n">Accepted (GRN + SRN)</th><th class="n">Billed on other bills</th><th class="n">Available to bill</th><th class="n">Rate</th><th class="n">Qty to bill</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+    : '<p class="flag bad">No accepted goods or services on this PO that are not yet billed. Record the GRN / SRN first.</p>');
+}
+App.tickAll = on => { document.querySelectorAll('#modal .atk').forEach(c => { if (!c.disabled) c.checked = on; }); };
+App.billQty = () => {
+  let t = 0;
+  document.querySelectorAll('#modal .bq').forEach(el => {
+    const rate = num(document.querySelector('#modal .brt[data-item="' + el.dataset.item + '"]').value), amt = Math.round(num(el.value) * rate);
+    t += amt; const cell = document.querySelector('#modal [data-amt="' + el.dataset.item + '"]'); if (cell) cell.textContent = fmt(amt);
+  });
+  const a = document.querySelector('#f_amount'); if (a) a.value = t;
+};
+// Value of GRNs received without a PO: accepted quantity x MPL rate.
+function noPoGrnValue(refs) {
+  const nos = refs.split(/;\s*/).filter(Boolean);
+  return S.grns.filter(g => nos.includes(g.no)).reduce((s, g) => s + (g.lines || []).reduce((a, l) => { const m = mplRate(l.item, ''); const acc = l.acc === null || l.acc === undefined ? num(l.recd) : num(l.acc); return a + acc * (m ? m.rate : 0); }, 0), 0);
+}
+// Accepted quantities of the no-PO GRNs linked to a bill, one line per item.
+function noPoLines(b) {
+  const nos = (b.refs || '').split(/;\s*/).filter(Boolean), byItem = {}, order = [];
+  S.grns.filter(g => g.noPo && !g.po && nos.includes(g.no)).forEach(g => (g.lines || []).forEach(l => {
+    if (!l.item) return;
+    if (!(l.item in byItem)) { byItem[l.item] = 0; order.push(l.item); }
+    byItem[l.item] += num(l.acc === null || l.acc === undefined ? l.recd : l.acc);
+  }));
+  return order.map(item => ({ item, qty: byItem[item] })).filter(x => x.qty > 0);
+}
+function billNoPoHtml(b, edM) {
+  const lines = noPoLines(b);
+  if (!lines.length) return '';
+  const rows = lines.map(x => {
+    const mine = (b.items || []).find(i => i.item === x.item), m = mplRate(x.item, '');
+    const rate = mine ? mine.rate : (m ? m.rate : 0);
+    return '<tr><td>' + esc(x.item) + '</td><td>' + esc(itemName(x.item)) + '</td><td>' + esc((item(x.item) || {}).unit || '') + '</td>' +
+      '<td class="n">' + fmtQ(x.qty) + '</td>' +
+      '<td class="n"><input type="number" class="npr" data-item="' + esc(x.item) + '" data-qty="' + x.qty + '" value="' + rate + '" min="0" ' + (edM ? '' : 'disabled') + ' oninput="App.noPoRate()" style="width:110px"></td>' +
+      '<td class="n" data-namt="' + esc(x.item) + '">' + fmt(x.qty * rate) + '</td></tr>';
+  }).join('');
+  return '<h4>Items on the GRN (no PO) - enter the rate as per the vendor bill</h4><div class="tw"><table class="lt"><thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="n">Accepted qty</th><th class="n">Rate (IQD)</th><th class="n">Amount</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+App.noPoRate = () => {
+  let t = 0;
+  document.querySelectorAll('#modal .npr').forEach(el => {
+    const amt = Math.round(num(el.dataset.qty) * num(el.value)); t += amt;
+    const c = document.querySelector('#modal [data-namt="' + el.dataset.item + '"]'); if (c) c.textContent = fmt(amt);
+  });
+  const a = document.querySelector('#f_amount'); if (a) a.value = t;
+};
+function advBal(b) {
+  const p = findPO(b.po), pc = p && C.po[p.no];
+  if (!p || !pc) return 0;
+  const used = S.bills.filter(x => x.po === p.no && x.no !== b.no).reduce((s, x) => s + num(x.advAdj), 0);
+  return Math.max(0, pc.advPaid - used);
+}
+function advOnPO(b, amt) {
+  const p = findPO(b.po);
+  if (!p || num(p.adv) <= 0) return 0;
+  return Math.round(Math.min(num(amt) * num(p.adv), advBal(b)));
+}
+App.billPO = sel => { const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b); b.kind = 'po'; b.po = sel.value; b.refs = ''; b.advAdj = advOnPO(b, b.amount); ACT.editBILL(b.no); };
+// Bill type: PO based or No PO based. Switching clears what belongs to the other type.
+App.billKind = el => {
+  const b = S.bills.find(x => x.no === el.dataset.doc); readInto($('#modal .mbody'), b);
+  b.kind = el.value; b.po = ''; b.refs = ''; b.items = []; b.advAdj = 0; b.vendor = ''; b.line = ''; b.amount = null;
+  ACT.editBILL(b.no);
+};
+// No PO bill: choosing the GRN fills the vendor, the items (rates below) and the budget line from it.
+App.billGRN = sel => {
+  const b = S.bills.find(x => x.no === sel.dataset.doc); readInto($('#modal .mbody'), b);
+  const g = S.grns.find(x => x.no === sel.value);
+  b.refs = g ? g.no : ''; b.items = []; b.amount = null;
+  b.vendor = g ? (g.vendor || '') : ''; b.line = g ? grnBudgetLine(g) : '';
+  if (g && !g.vendor) toast('This GRN has no vendor (entered before vendors were recorded on No PO GRNs). Set the vendor on the GRN page, or type it here.', 'bad');
+  if (g && new Set((g.lines || []).map(l => itemLine(l.item)).filter(Boolean)).size > 1) toast('This GRN has items on more than one budget line - the bill takes the first. Split the GRN if needed.', 'bad');
+  ACT.editBILL(b.no);
+};
+// Budget line of a GRN without a PO: the budget line of its items (taken from their category).
+function grnBudgetLine(g) { return [...new Set((g.lines || []).map(l => itemLine(l.item)).filter(Boolean))][0] || ''; }
 App.suggestAdv = no => {
   const b = S.bills.find(x => x.no === no), p = findPO(b.po); if (!p) return;
-  const amt = num($('#f_amount').value), c = C.bill[no];
-  $('#f_advAdj').value = Math.round(Math.min(amt * num(p.adv), Math.max(0, c.advBalBefore)));
+  $('#f_advAdj').value = advOnPO(b, numOrNull($('#f_amount').value));
 };
 // The latest rate paid for an item on an earlier PO (not the PO itself, and not after this PO's date).
 function previousRate(code, cur) {
@@ -1898,27 +2117,61 @@ function priceHistoryHtml(p) {
 }
 ACT.editBILL = no => {
   const b = S.bills.find(x => x.no === no), r = C.bill[no], p = b.po ? findPO(b.po) : null;
+  if (p && b.invoicedAmount == null) b.invoicedAmount = b.amount;
   const paid = !!b.payDate;
   const edM = canEdit('Bills') && may('Maintenance Masool') && !paid && b.audit !== 'Clear';
-  const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no)) : [];
+  const kind = b.kind || (b.po ? 'po' : 'nopo');
+  const refsAvail = p ? S.grns.filter(g => g.po === p.no).map(g => g.no).concat(S.srns.filter(s => s.po === p.no).map(s => s.no))
+    : (kind === 'nopo' ? S.grns.filter(g => !g.po && g.noPo && !S.bills.some(x => x.no !== b.no && (x.refs || '').split(/;\s*/).includes(g.no))).map(g => g.no) : []);
   const refs = (b.refs || '').split(/;\s*/).filter(Boolean);
+  const hasGrn = !p && kind === 'nopo' && refs.length > 0;
+  const noPoOpts = refsAvail.map(x => { const g = S.grns.find(y => y.no === x); return [x, x + (g ? ' - ' + (g.vendor || 'vendor not set') + ' - ' + fdate(g.date) : '')]; });
+  if (p && num(p.adv) > 0) setTimeout(() => { const amtEl = $('#f_amount'), advEl = $('#f_advAdj'); if (amtEl && advEl) amtEl.addEventListener('input', () => { advEl.value = advOnPO(b, numOrNull(amtEl.value)); }); }, 0);
+  if (p && edM) setTimeout(() => App.billQty(), 0);
+  if (!p && edM && (b.refs || '').trim()) setTimeout(() => App.noPoRate(), 0);
   modal('Bill ' + no, `<div class="sum">${flag(r.pay)} Net payable <b>${fmt(r.net)}</b> IQD &middot; 3-way match ${flags(r.match)}</div>
     ${b.audit === 'Clear' && !paid ? '<p class="note">Cleared by the Internal Auditor - the bill entry is locked. Accounts records the payment.</p>' : ''}${paid ? '<p class="note">Paid - locked.</p>' : ''}
-    <div class="grid"><div class="fld"><label>PO no. (blank for a purchase below ${fmt(S.settings.poFrom)} IQD)</label><select data-doc="${esc(no)}" onchange="App.billPO(this)" ${edM ? '' : 'disabled'}>${opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po)}</select></div></div>`
+    <div class="grid"><div class="fld full"><label>Bill type <i>*</i></label><div class="chips"><label class="chk"><input type="radio" name="billKind" data-doc="${esc(no)}" value="po" ${kind === 'po' ? 'checked' : ''} ${edM ? '' : 'disabled'} onchange="App.billKind(this)"> PO based bill entry</label><label class="chk"><input type="radio" name="billKind" data-doc="${esc(no)}" value="nopo" ${kind === 'nopo' ? 'checked' : ''} ${edM ? '' : 'disabled'} onchange="App.billKind(this)"> No PO based bill entry</label></div></div>${kind === 'po' ? '<div class="fld"><label>PO no. <i>*</i></label><select data-doc="' + esc(no) + '" onchange="App.billPO(this)" ' + (edM ? '' : 'disabled') + '>' + opts(S.pos.filter(x => !x.cancel && (!x.closedOn || x.no === b.po)).map(x => [x.no, x.no + ' - ' + x.vendor]), b.po) + '</select></div>' : '<div class="fld"><label>GRN without a PO (not yet billed) <i>*</i></label><select id="f_noPoGrn" data-doc="' + esc(no) + '" onchange="App.billGRN(this)" ' + (edM ? '' : 'disabled') + '>' + opts(noPoOpts, refs[0] || '') + '</select>' + (noPoOpts.length ? '<small>Choose the GRN: vendor, items and budget line fill in from it.</small>' : '<small>None. Enter the GRN for a no-PO purchase first (GRN page, No PO).</small>') + '</div>'}</div>`
     + (p ? priceHistoryHtml(p) : '')
+    + (p ? billItemsHtml(b, p, edM) : billNoPoHtml(b, edM))
     + fields([
       { k: 'date', l: 'Date submitted to Accounts', t: 'date', ed: edM }, { k: 'invNo', l: 'Vendor invoice no.', t: 'text', ed: edM, req: 1 }, { k: 'invDate', l: 'Invoice date', t: 'date', ed: edM },
-      { k: 'amount', l: 'Invoice amount (IQD)', t: 'num', ed: edM, req: 1 },
-      { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `<a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Use PO terms (${pct(p.adv)} of bill, max balance ${fmt(r.advBalBefore)})</a>` : '' },
+      { k: 'amount', l: (p || (b.refs || '').trim()) ? 'Bill amount on accepted quantities (IQD)' : 'Invoice amount (IQD)', t: 'num', ed: edM && kind === 'nopo' && !hasGrn, req: 1, hint: (p || (b.refs || '').trim()) ? 'Calculated from the quantities and rates. Rejected or undelivered goods are not paid.' : '' },
+      ...((p || (b.refs || '').trim()) ? [{ k: 'invoicedAmount', l: 'Vendor invoice amount (IQD)', t: 'num', ed: edM, hint: 'As invoiced by the vendor - for reference against the bill amount.' }] : []),
+      { k: 'advAdj', l: 'Advance adjusted (IQD)', t: 'num', ed: edM && !!p, hint: p && num(p.adv) > 0 && edM ? `Filled from the paid advance vouchers on this PO (${pct(p.adv)} of bill, max balance ${fmt(advBal(b))}). <a href="#" onclick="event.preventDefault();App.suggestAdv('${esc(no)}')">Recalculate</a>` : '' },
       { k: 'otherDed', l: 'Other deductions (IQD)', t: 'num', ed: edM, hint: 'e.g. pieces lost by the laundry at the MPL linen rate' },
-    ].concat(p ? [] : [{ k: 'vendor', l: 'Vendor (no-PO bills only)', t: 'sel', o: vendorOpts(), ed: edM }, { k: 'line', l: 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM }, { k: 'mode', l: 'Payment mode (no-PO bills)', t: 'sel', o: S.lists.payModes, ed: edM }])
+    ].concat(kind === 'nopo' ? [{ k: 'vendor', l: hasGrn ? 'Vendor (from the GRN)' : 'Vendor (no-PO bills only)', t: 'sel', o: vendorPairs(), ed: edM && !(hasGrn && b.vendor) }, { k: 'line', l: hasGrn ? 'Budget line (from the items on the GRN)' : 'Budget line (no-PO bills only)', t: 'sel', o: lineOpts(), ed: edM && !(hasGrn && b.line) }, { k: 'mode', l: 'Payment mode (no-PO bills, cash only)', t: 'sel', o: ['Cash'], ed: edM }] : [])
       .concat([{ k: 'desc', l: 'Description of purchase / purpose', t: 'area', full: true, ed: edM }]), b)
-    + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>` : '')
+    + (p ? `<h4>GRN / SRN attached</h4><div class="chips">${refsAvail.length ? refsAvail.map(x => `<label class="chk"><input type="checkbox" class="refck" value="${esc(x)}" ${refs.includes(x) ? 'checked' : ''} ${edM ? '' : 'disabled'}> ${esc(x)}</label>`).join('') : '<span class="flag bad">No GRN / SRN on this PO yet</span>'}</div>`
+      : '')
     + `<h4>Computed</h4>` + kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['PO value', fmt(r.poValue), 'Received (GRN + SRN)', fmt(r.received)], ['Billed to date on PO', fmt(r.billedToDate), 'Retention ' + pct(r.retPct), fmt(r.retention)], ['Advance balance before this bill', fmt(r.advBalBefore), 'Net payable', '<b>' + fmt(r.net) + '</b>']])
     + `<h4>Pre-payment audit and payment</h4>` + kv([['Audit status', b.audit ? flag(b.audit) : 'Awaiting audit', 'Auditor remarks', esc(b.auditRemarks)], ['PV no.', esc(b.pv), 'Paid on / reference', fdate(b.payDate) + ' ' + esc(b.payRef)]]),
     [edM && { l: 'Save', cls: 'pri', fn: body => {
-      readInto(body, b);
+      readInto(body, b); b.kind = kind;
+      if (kind === 'po' && !p) return toast('Choose the PO first, or switch to No PO based bill entry.', 'bad');
       if (p) b.refs = [...body.querySelectorAll('.refck:checked')].map(x => x.value).join('; ');
+      else if (kind === 'nopo') { const s = body.querySelector('#f_noPoGrn'); b.refs = s && s.value ? s.value : ''; }
+      if (!p && (b.refs || '').trim()) {
+        const g = S.grns.find(x => x.no === b.refs.trim());
+        if (g) { b.vendor = g.vendor || b.vendor || ''; b.line = grnBudgetLine(g) || b.line || ''; }
+        const items = [];
+        body.querySelectorAll('.npr').forEach(el => { const q = num(el.dataset.qty), rate = num(el.value); if (q > 0) items.push({ item: el.dataset.item, qty: q, rate, amount: Math.round(q * rate) }); });
+        b.items = items; b.amount = items.reduce((s, x) => s + x.amount, 0);
+      }
+      if (p) {
+        const reduced = [], items = [], rateChanged = [];
+        body.querySelectorAll('.bq').forEach(el => {
+          const it = el.dataset.item, asked = num(el.value), cap = itemCap(b, it);
+          const rEl = body.querySelector('.brt[data-item="' + it + '"]'), rate = rEl ? num(rEl.value) : num(el.dataset.rate);
+          if (rEl && Math.abs(rate - num(rEl.dataset.poRate)) > 0.5) rateChanged.push(it + ' ' + fmt(rate) + ' (PO ' + fmt(num(rEl.dataset.poRate)) + ')');
+          const q = Math.max(0, Math.min(asked, cap));
+          if (asked > cap + 1e-9) reduced.push(it + ': ' + fmtQ(asked) + ' asked, ' + fmtQ(cap) + ' accepted and not yet billed');
+          if (q > 0) items.push({ item: it, qty: q, rate, amount: Math.round(q * rate) });
+        });
+        b.items = items; b.amount = items.reduce((s, x) => s + x.amount, 0);
+        if (rateChanged.length) toast('Rate differs from the PO: ' + rateChanged.join('; ') + '. Audit will check it against the MPL.', 'bad');
+        if (reduced.length) toast('Quantity reduced to accepted: ' + reduced.join('; ') + '. Ask the vendor for a corrected invoice or credit note.', 'bad');
+      }
       if (!b.po && num(b.amount) >= num(S.settings.poFrom)) toast('No PO for a bill of ' + fmt(S.settings.poFrom) + ' IQD or more - this voucher will not be paid. Never split a requirement into several bills.', 'bad');
       commit('Bill saved', no); render(); ACT.editBILL(no);
     } },
@@ -1928,9 +2181,9 @@ ACT.editBILL = no => {
 function printPV(no) {
   const b = S.bills.find(x => x.no === no), r = C.bill[no];
   const need = [true, !!b.po, !!b.po, num(b.advAdj) > 0, !b.po];
-  printDoc('PAYMENT VOUCHER (MH-16A) ' + no, kv([['Voucher (bill entry) no.', `<b>${esc(no)}</b>`, 'Voucher date', fdate(b.date)], ['Pay to (vendor)', esc(r.vendor), 'Budget line', esc(r.line)],
+  printDoc('PAYMENT VOUCHER (MH-16A) ' + no, kv([['Voucher (bill entry) no.', `<b>${esc(no)}</b>`, 'Voucher date', fdate(b.date)], ['Pay to (vendor)', esc(r.vendor || b.vendor || ''), 'Budget line', esc(r.line)],
     ['Bill / invoice no. & date', esc(b.invNo) + ' ' + fdate(b.invDate), 'PO no.', esc(b.po || 'No PO (below ' + fmt(S.settings.poFrom) + ' IQD)')], ['Description / purpose', esc(b.desc), 'Payment mode', esc(b.po ? (findPO(b.po) || {}).mode : b.mode)],
-    ['GRN / SRN attached', esc(b.refs), 'Accounts PV no.', esc(b.pv)]])
+    ['GRN / SRN attached', esc(b.refs || 'None attached - tick the GRN or SRN on the bill'), 'Accounts PV no.', esc(b.pv)]])
     + '<h4>Amount (IQD)</h4>' + kv([['Bill amount', fmt(b.amount), 'PO value', fmt(r.poValue)], ['Less: advance adjusted', fmt(b.advAdj), 'Received (GRN + SRN)', fmt(r.received)], ['Less: retention', fmt(r.retention), 'Billed to date on PO', fmt(r.billedToDate)],
       ['Less: other deductions', fmt(b.otherDed), 'System check', esc(r.match)], ['NET PAYABLE', `<b>${fmt(r.net)}</b><br><small>${esc(amountWords(r.net))}</small>`, 'Status', esc(r.pay)]])
     + `<h4>Documents attached (tick)</h4><table class="lt"><thead><tr><th>#</th><th>Document</th><th>Needed?</th><th>Tick</th></tr></thead><tbody>${['Original bill / invoice, signed by the Masool as goods or service received', 'PO / PO-cum-Quotation, with the quotations', 'GRN (goods) or SRN (labour / services)', 'Advance voucher, where an advance is adjusted', 'Quotation or market rate note, for purchases without a PO'].map((d, i) => `<tr><td>${i + 1}</td><td>${d}</td><td>${need[i] ? 'Yes' : '-'}</td><td>&#9744;</td></tr>`).join('')}</tbody></table>`
@@ -1972,26 +2225,27 @@ ACT.auditBill = no => {
   const edA = (canEdit('Bills') || canEdit('Payment Pack')) && may('Accounts') && b.audit === 'Clear';
   const ch = auditChecks(b);
   b.checks = b.checks || {};
-  modal('Pre-payment audit - ' + no, kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['Invoice no. / date', esc(b.invNo) + ' ' + fdate(b.invDate), 'PO no.', esc(b.po || 'No PO')], ['GRN / SRN attached', esc(b.refs), 'PV no.', esc(b.pv)]])
+  modal('Pre-payment audit - ' + no, kv([['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['Invoice no. / date', esc(b.invNo) + ' ' + fdate(b.invDate), 'PO no.', esc(b.po || 'No PO')], ['GRN / SRN attached', esc(b.refs || 'None attached - tick the GRN or SRN on the bill'), 'PV no.', esc(b.pv)]])
     + '<h4>Payment computation (IQD)</h4>' + kv([['Invoice amount', fmt(b.amount), 'PO value', fmt(r.poValue)], ['Less: advance adjusted', fmt(b.advAdj), 'Received (GRN + SRN)', fmt(r.received)], ['Less: retention', fmt(r.retention), 'Billed to date on PO', fmt(r.billedToDate)], ['Less: other deductions', fmt(b.otherDed), 'Advance balance before bill', fmt(r.advBalBefore)], ['NET PAYABLE', '<b>' + fmt(r.net) + '</b>', 'Payment status', flag(r.pay)]])
-    + `<h4>Checklist</h4><table class="lt"><thead><tr><th>#</th><th>Check</th><th>System result</th><th>Auditor tick</th></tr></thead><tbody>${ch.map(([t, s], i) => `<tr><td>${i + 1}</td><td>${esc(t)}</td><td>${s === 'Manual' || s === '-' ? esc(s) : flags(s)}</td><td><input type="checkbox" class="atk" data-i="${i}" ${b.checks[i] ? 'checked' : ''} ${edI ? '' : 'disabled'}></td></tr>`).join('')}</tbody></table>`
+    + `<h4>Checklist</h4>` + (edI ? `<p><button class="btn" type="button" onclick="App.tickAll(true)">Tick all</button> <button class="btn" type="button" onclick="App.tickAll(false)">Untick all</button></p>` : '') + `<table class="lt"><thead><tr><th>#</th><th>Check</th><th>System result</th><th>Auditor tick</th></tr></thead><tbody>${ch.map(([t, s], i) => `<tr><td>${i + 1}</td><td>${esc(t)}</td><td>${s === 'Manual' || s === '-' ? esc(s) : flags(s)}</td><td><input type="checkbox" class="atk" data-i="${i}" ${b.checks[i] ? 'checked' : ''} ${edI ? '' : 'disabled'}></td></tr>`).join('')}</tbody></table>`
     + fields([{ k: 'audit', l: 'Audit status (Internal Auditor)', t: 'sel', o: ['Clear', 'Hold', 'Query'], ed: edI }, { k: 'auditDate', l: 'Audit date', t: 'date', ed: edI }, { k: 'auditRemarks', l: 'Auditor remarks', t: 'area', full: true, ed: edI }, { k: 'varBy', l: 'Variance approved by (Sigat / Head of Accounts)', t: 'text', ed: edI }, { k: 'varDate', l: 'Variance approval date', t: 'date', ed: edI }, { k: 'varRemarks', l: 'Variance remarks', t: 'area', full: true, ed: edI },
-      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Bank transfer to the account on the AVL' }], b),
+      { k: 'pv', l: 'PV no. (Accounts)', t: 'text', ed: edA }, { k: 'payDate', l: 'Payment date (Accounts)', t: 'date', max: 'today', ed: edA }, { k: 'payRef', l: 'Payment reference (Accounts)', t: 'text', ed: edA, hint: 'Cash payment: the voucher or receipt reference' }], b),
     [(edI || edA) && { l: 'Save', cls: 'pri', fn: body => {
-      const o = Object.assign({}, b); readInto(body, o);
+      const o = Object.assign({}, b); readInto(body, o); o.mode = 'Cash';
       if (edI) { o.checks = {}; body.querySelectorAll('.atk').forEach(x => { o.checks[x.dataset.i] = x.checked; }); }
       if (edI && o.audit === 'Clear' && r.match !== 'OK') return toast('3-way match is not OK (' + r.match + '). Mark Hold or Query with remarks.', 'bad');
       if (edI && o.audit === 'Clear' && Object.values(o.checks).filter(Boolean).length < ch.length) return toast('Tick every checklist line before marking Clear.', 'bad');
       if (edI && o.audit && o.audit !== 'Clear' && !o.auditRemarks) return toast('Give remarks for Hold / Query - the bill goes back to the Masool.', 'bad');
       if (edI && o.audit && !o.auditDate) o.auditDate = isoDate(new Date());
       if (edA && o.payDate && !o.payRef) return toast('Record the payment reference.', 'bad');
+      if (edA && futureDate(o.payDate)) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
       const act = o.audit !== b.audit ? 'Bill audit: ' + o.audit : o.payDate && !b.payDate ? 'Bill paid' : 'Bill audit / payment updated';
       Object.assign(b, o); commit(act, no); render(); ACT.auditBill(no);
     } }, { l: 'Print / export (MH-16)', fn: () => printPack(no) }], { wide: true });
 };
 function printPack(no) {
   const b = S.bills.find(x => x.no === no), r = C.bill[no], ch = auditChecks(b);
-  printDoc('PRE-PAYMENT AUDIT CHECKLIST & PAYMENT PACK (MH-16) ' + no, kv([['Bill entry no.', `<b>${esc(no)}</b>`, 'Submitted on', fdate(b.date)], ['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['Invoice no. / date', esc(b.invNo) + ' ' + fdate(b.invDate), 'PO no.', esc(b.po || 'No PO')], ['GRN / SRN attached', esc(b.refs), 'PV no.', esc(b.pv)]])
+  printDoc('PRE-PAYMENT AUDIT CHECKLIST & PAYMENT PACK (MH-16) ' + no, kv([['Bill entry no.', `<b>${esc(no)}</b>`, 'Submitted on', fdate(b.date)], ['Vendor', esc(r.vendor), 'Budget line', esc(r.line)], ['Invoice no. / date', esc(b.invNo) + ' ' + fdate(b.invDate), 'PO no.', esc(b.po || 'No PO')], ['GRN / SRN attached', esc(b.refs || 'None attached - tick the GRN or SRN on the bill'), 'PV no.', esc(b.pv)]])
     + '<h4>Payment computation (IQD)</h4>' + kv([['Invoice amount', fmt(b.amount), 'PO value', fmt(r.poValue)], ['Less: advance adjusted', fmt(b.advAdj), 'Received (GRN + SRN)', fmt(r.received)], ['Less: retention', fmt(r.retention), 'Billed to date on PO', fmt(r.billedToDate)], ['Less: other deductions', fmt(b.otherDed), 'Advance balance before bill', fmt(r.advBalBefore)], ['NET PAYABLE', '<b>' + fmt(r.net) + '</b>', 'Payment status', esc(r.pay)]])
     + `<h4>Pre-payment audit checklist</h4><table class="lt"><thead><tr><th>#</th><th>Check</th><th>System result</th><th>Auditor tick</th></tr></thead><tbody>${ch.map(([t, s], i) => `<tr><td>${i + 1}</td><td>${esc(t)}</td><td>${esc(s)}</td><td>${(b.checks || {})[i] ? '&#9745;' : '&#9744;'}</td></tr>`).join('')}</tbody></table>`
     + kv([['Overall result', esc(r.match), 'Audit status', esc(b.audit || 'Awaiting audit')], ['Auditor remarks', esc(b.auditRemarks), 'Paid on / reference', fdate(b.payDate) + ' ' + esc(b.payRef)]])
@@ -2140,10 +2394,10 @@ ACT.editLaundry = id => {
 };
 
 /* ===== MH-03 Items ===== */
-const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.mpl.rows.some(r => r.item === code);
+const usedItem = code => S.pos.some(p => p.lines.some(l => l.item === code)) || S.issues.some(s => s.lines.some(l => l.item === code)) || S.items.some(i => i.code === code && (num(i.mpl) > 0 || num(i.appr) > 0));
 view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   const ed = canEdit('Items');
-  tools((ed ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
+  tools((ed || may('GRN Officer') ? '<button class="btn pri" data-act="editItem">+ New item</button>' : '') + impBtn('items'));
   return `<p class="muted">The only place items, services and norms are defined. Kept by the Head of Accounts on the Masool's request. Never rename an item once used - add a new one. Norms and par levels are indicative starting values.</p>` + table('items', [
     { h: 'Code', v: i => `<b>${esc(i.code)}</b>` }, { h: 'Item / service', v: i => esc(i.name) }, { h: 'Category', v: i => esc(i.cat) }, { h: 'Budget line', v: i => esc(itemLine(i.code)) },
     { h: 'Type', v: i => esc(itemType(i.code)) }, { h: 'Unit', v: i => esc(i.unit) }, { h: 'HK norm / 100 zd', n: 1, v: i => fmtQ(i.norm) }, { h: 'Linen par / bed', n: 1, v: i => fmtQ(i.par) },
@@ -2151,17 +2405,20 @@ view('items', 'Items & MPL rates', 'Items', 'Masters', 'MH-03', () => {
   ], S.items, { click: 'editItem', key: i => i.code, name: 'Items' });
 });
 ACT.editItem = code => {
-  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '' } : item(code), ed = canEdit('Items'), used = !isNew && usedItem(code);
-  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code and name cannot change. Add a new item instead.</p>' : '') + fields([
-    { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: ed && !used, req: 1 },
+  const isNew = !code, i = isNew ? { code: '', name: '', cat: '', unit: 'nos', norm: null, par: null, reorder: null, opening: 0, remarks: '', mpl: null, appr: null, pref: '', basis: '' } : item(code), used = !isNew && usedItem(code);
+  const ed = canEdit('Items') || (isNew && may('GRN Officer')), canRename = !isNew && may('Maintenance Masool', 'Internal Auditor') && canEdit('Items');
+  modal(isNew ? 'New item' : i.code + ' ' + i.name, (used ? '<p class="note">This item is already used - its code cannot change.' + (canRename ? ' Maintenance Masool, Head of Accounts or Internal Auditor may correct the spelling of the name.' : '') + '</p>' : '') + fields([
+    { k: 'code', l: 'Item code', t: 'text', ed: ed && !used, req: 1 }, { k: 'name', l: 'Item / service name (unique)', t: 'text', ed: (ed && !used) || canRename, req: 1 },
     { k: 'cat', l: 'Category (fixes budget line and type)', t: 'sel', o: S.categories.map(c => [c.name, c.name + ' (' + c.line + ', ' + c.type + ')']), ed, req: 1 }, { k: 'unit', l: 'Unit', t: 'sel', o: S.lists.units, ed },
     { k: 'norm', l: 'HK norm per 100 zaereen-days', t: 'num', ed }, { k: 'par', l: 'Linen par per bed', t: 'num', ed }, { k: 'reorder', l: 'Re-order level', t: 'num', ed },
-    { k: 'opening', l: 'Opening stock at go-live (qty)', t: 'num', ed, hint: 'Physical count on ' + fdate(S.settings.stockOpenDate) }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], i),
+    { k: 'opening', l: 'Opening stock at go-live (qty)', t: 'num', ed, hint: 'Physical count on ' + fdate(S.settings.stockOpenDate) }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed },
+    { k: 'mpl', l: 'Proposed rate (MPL, IQD)', t: 'num', ed, hint: isNew ? 'Approved later on the Item rates page' : 'Approved rate: ' + (num(i.appr) ? fmt(i.appr) + ' by ' + esc(i.apprBy || '') + ' on ' + fdate(i.apprOn) : 'none yet') + ' - ' + itemRateStatus(i) },
+    { k: 'pref', l: 'Preferred vendor', t: 'sel', o: S.vendors.map(v => v.name), ed }, { k: 'basis', l: 'Rate basis (quotations / remarks)', t: 'text', full: true, ed }], i),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
       const o = Object.assign({}, i); readInto(b, o);
       if (!o.code || !o.name || !o.cat) return toast('Code, name and category are required.', 'bad');
       if (S.items.some(x => x !== i && (x.code === o.code || x.name.toLowerCase() === o.name.toLowerCase()))) return toast('Code and name must be unique.', 'bad');
-      Object.assign(i, o); i.opening = num(i.opening); if (isNew) S.items.push(i);
+      Object.assign(i, o); i.opening = num(i.opening); i.mpl = o.mpl === null || o.mpl === '' ? null : num(o.mpl); if (isNew) S.items.push(i);
       closeModal(); commit(isNew ? 'Item added' : 'Item updated', i.code); render();
     } }]);
 };
@@ -2181,9 +2438,9 @@ ACT.editVendor = code => {
   modal(isNew ? 'New vendor' : v.name, fields([
     { k: 'code', l: 'Vendor code', t: 'text', ed: ed && !used }, { k: 'name', l: 'Vendor / contractor name', t: 'text', ed: ed && !used, req: 1 }, { k: 'type', l: 'Type', t: 'sel', o: S.lists.vendorTypes, ed },
     { k: 'supplies', l: 'Supplies (category)', t: 'text', ed }, { k: 'contact', l: 'Contact person', t: 'text', ed }, { k: 'phone', l: 'Phone', t: 'text', ed },
-    { k: 'avl', l: 'On AVL? (Y/N)', t: 'sel', o: ['Y', 'N'], ed, blank: false }, { k: 'bank', l: 'Bank account name & bank (verified)', t: 'text', ed }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], v),
+    { k: 'bank', l: 'Bank account name & bank (verified)', t: 'text', ed }, { k: 'remarks', l: 'Remarks', t: 'text', full: true, ed }], v),
     [ed && { l: 'Save', cls: 'pri', fn: b => {
-      const o = Object.assign({}, v); readInto(b, o); if (!o.name) return toast('Name is required.', 'bad');
+      const o = Object.assign({}, v); readInto(b, o); o.avl = 'Y'; if (!o.name) return toast('Name is required.', 'bad');
       if (/[\u0600-\u06FF]/.test(o.name)) return toast('Vendor names must be written in English letters.', 'bad');
       if (S.vendors.some(x => x !== v && (x.code === o.code || x.name === o.name))) return toast('Code and name must be unique.', 'bad');
       Object.assign(v, o); if (isNew) S.vendors.push(v); closeModal(); commit(isNew ? 'Vendor added' : 'Vendor updated', v.name); render();
@@ -2200,38 +2457,31 @@ function mplCheck(r) {
   return 'OK';
 }
 let MPL_TOOLS_HTML = '';
-view('mpl', 'Master price list', 'MPL', 'Merged into Items', 'MH-05', (o = {}) => {
-  const m = S.mpl, ed = canEdit('MPL') && m.status !== 'Approved';
-  const mplTools = ((canEdit('MPL') ? (m.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : '<button class="btn pri" data-act="approveMPL">Approve MPL</button>') : '') + (ed ? '<button class="btn ghost" data-act="editMPL">+ Add rate</button>' : '') + impBtn('mpl'));
-  if (o.merged) MPL_TOOLS_HTML = mplTools; else tools(mplTools);
-  return `<div class="sum">Status ${flag(m.status === 'Approved' ? 'Approved' : m.status)} &middot; Version ${m.version} &middot; Prepared by ${esc(m.preparedBy)} ${fdate(m.preparedOn)} &middot; Approved by ${esc(m.approvedBy || '-')} ${fdt(m.approvedOn)} &middot; Valid until ${fdate(m.validUntil)}</div>
-  <p class="muted">Rates from quotations (normally three). Approved by the Head of Accounts with the approval password - the list is then LOCKED. To change a rate: Revise MPL (password + reason), edit, then approve again as a new version. Every PO line is checked against these rates (tolerance ${pct(S.settings.priceTol)}).</p>` + table('mpl', [
-    { h: 'Item code', v: r => esc(r.item) }, { h: 'Item / service', v: r => esc(itemName(r.item)) }, { h: 'Unit', v: r => esc((item(r.item) || {}).unit) }, { h: 'Vendor', v: r => esc(r.vendor) },
-    { h: 'Approved rate (IQD)', n: 1, v: r => `<b>${fmt(r.rate)}</b>` }, { h: 'Valid from', v: r => fdate(r.from) }, { h: 'Valid to', v: r => fdate(r.to) }, { h: 'Previous rate', n: 1, v: r => fmt(r.prev) },
-    { h: 'Change %', n: 1, v: r => num(r.prev) ? pct(num(r.rate) / num(r.prev) - 1, 1) : '' }, { h: 'Basis', v: r => esc(r.basis) }, { h: 'Check', v: r => flag(mplCheck(r)) },
-  ], S.mpl.rows, { click: ed ? 'editMPL' : '', key: r => S.mpl.rows.indexOf(r), name: 'MPL v' + m.version });
+view('mpl', 'Item rates (MPL)', 'MPL', 'Merged into Items', 'MH-05', (o = {}) => {
+  const ed = canEdit('Items') && may('Admin');
+  const tl = ed && pendingRates().length ? '<button class="btn pri" data-act="rates-approve">Approve item rates</button>' : '';
+  if (o.merged) MPL_TOOLS_HTML = tl; else tools(tl);
+  return '<p class="muted">Each item has one rate: the proposed rate (MPL) and the approved rate. A changed proposal waits for approval. Approve here, by name; the previous approved rate is kept. Change a proposed rate on the item (Items page).</p>' + table('mpl', [
+    { h: 'Item code', v: i => '<b>' + esc(i.code) + '</b>' }, { h: 'Item / service', v: i => esc(i.name) }, { h: 'Preferred vendor', v: i => esc(i.pref) },
+    { h: 'Proposed rate (IQD)', n: 1, v: i => fmt(i.mpl) }, { h: 'Approved rate (IQD)', n: 1, v: i => '<b>' + fmt(i.appr) + '</b>' }, { h: 'Previous rate', n: 1, v: i => fmt(i.prev) },
+    { h: 'Approved by', v: i => esc(i.apprBy) }, { h: 'Approved on', v: i => fdate(i.apprOn) }, { h: 'Status', v: i => flag(itemRateStatus(i)) }, { h: 'Basis', v: i => esc(i.basis) },
+  ], S.items.filter(i => num(i.mpl) > 0 || num(i.appr) > 0), { click: 'editItem', key: i => i.code, name: 'Item rates' });
 });
-ACT.editMPL = idx => {
-  const isNew = idx === undefined || idx === '', r = isNew ? { item: '', vendor: '', rate: null, from: isoDate(new Date()), to: S.mpl.validUntil, prev: null, basis: '' } : S.mpl.rows[+idx];
-  modal(isNew ? 'Add MPL rate' : 'MPL rate - ' + itemName(r.item), fields([
-    { k: 'item', l: 'Item', t: 'sel', o: itemOpts(), req: 1 }, { k: 'vendor', l: 'Vendor', t: 'sel', o: vendorOpts(), req: 1 }, { k: 'rate', l: 'Approved rate (IQD)', t: 'num', req: 1 },
-    { k: 'prev', l: 'Previous rate (IQD)', t: 'num' }, { k: 'from', l: 'Valid from', t: 'date' }, { k: 'to', l: 'Valid to', t: 'date' }, { k: 'basis', l: 'Basis (quotes compared / remarks)', t: 'text', full: true }], r),
-    [{ l: 'Save', cls: 'pri', fn: b => { readInto(b, r); if (!r.item || !r.vendor || !num(r.rate)) return toast('Item, vendor and rate are required.', 'bad'); if (isNew) S.mpl.rows.push(r); closeModal(); commit('MPL rate ' + (isNew ? 'added' : 'changed'), r.item + ' ' + r.vendor + ' ' + r.rate); render(); } },
-      !isNew && { l: 'Remove rate', cls: 'danger', fn: () => { S.mpl.rows.splice(+idx, 1); closeModal(); commit('MPL rate removed', r.item + ' ' + r.vendor); render(); } }]);
+ACT['rates-approve'] = () => {
+  const pend = pendingRates();
+  if (!pend.length) return toast('No item rate is waiting for approval.');
+  modal('Approve item rates', '<p class="muted">Tick the rates to approve. Each approved rate becomes the rate in use; the old approved rate is kept as the previous rate.</p><div class="fld"><label>Approved by (name)</label><input id="ra-who" value="' + esc(U.name) + '"></div>' +
+    table('ratepick', [
+      { h: '', v: i => '<input type="checkbox" class="ratesel" value="' + esc(i.code) + '" checked>' }, { h: 'Code', v: i => esc(i.code) }, { h: 'Item', v: i => esc(i.name) },
+      { h: 'Approved now', n: 1, v: i => fmt(i.appr) }, { h: 'Proposed', n: 1, v: i => fmt(i.mpl) },
+    ], pend, { name: 'Pending rates', noTools: true }),
+    [{ l: 'Approve selected rates', cls: 'pri', fn: () => {
+      const who = ($('#ra-who').value || '').trim(); if (!who) return toast('Give the approver name.', 'bad');
+      const sel = new Set([...document.querySelectorAll('input.ratesel:checked')].map(x => x.value)); if (!sel.size) return toast('Select at least one rate.', 'bad');
+      S.items.forEach(i => { if (sel.has(i.code) && num(i.mpl) > 0 && num(i.mpl) !== num(i.appr)) { if (num(i.appr) > 0) i.prev = num(i.appr); i.appr = num(i.mpl); i.apprBy = who; i.apprOn = isoDate(new Date()); } });
+      closeModal(); commit('Item rates approved', sel.size + ' rate(s) by ' + who); render(); toast(sel.size + ' item rate(s) approved.', 'ok');
+    } }], { wide: true });
 };
-ACT.approveMPL = () => {
-  const bad = S.mpl.rows.filter(r => mplCheck(r) !== 'OK');
-  if (bad.length) return toast(bad.length + ' row(s) are not OK - fix them before approval.', 'bad');
-  needPassword('Approve MPL', 'Approving stamps the version, date and approver and locks the list. No rate can then be changed without Revise MPL.',
-    `<div class="fld"><label>Approved by (name)</label><input id="apn" value="${esc(U.name)}"></div><div class="fld"><label>Valid until</label><input type="date" id="apv" value="${esc(S.mpl.validUntil)}"></div>`, () => {
-      S.mpl.status = 'Approved'; S.mpl.version++; S.mpl.approvedBy = $('#apn').value.trim() || U.name; S.mpl.approvedOn = nowDT(); S.mpl.validUntil = $('#apv').value || S.mpl.validUntil;
-      closeModal(); commit('MPL approved', 'Version ' + S.mpl.version + ' by ' + S.mpl.approvedBy); render(); toast('MPL version ' + S.mpl.version + ' approved and locked.', 'ok');
-    });
-};
-ACT.reviseMPL = () => needPassword('Revise MPL', 'The list unlocks for editing and shows "Under revision". Approve it again afterwards as a new version.', '<div class="fld full"><label>Reason for revision</label><input id="rvr"></div>', () => {
-  const r = $('#rvr').value.trim(); if (!r) return toast('Give the reason.', 'bad');
-  S.mpl.status = 'Under revision'; closeModal(); commit('MPL revision opened', r); render();
-});
 
 /* ===== MH-02 Budget ===== */
 view('budget', 'Budget - monthly phasing', 'Budget', 'Masters', 'MH-02', () => {
@@ -2249,7 +2499,7 @@ ACT.saveZD = () => { document.querySelectorAll('input.zd').forEach(x => { S.sett
 /* ===== MH-01 Settings ===== */
 const SET_FIELDS = [
   ['A. General', [['year', 'Budget year', 'num'], ['capacity', 'Hotel capacity (beds / pax)', 'num'], ['prefix', 'Document number prefix', 'text'], ['stockOpenDate', 'Stock opening date (go-live)', 'date'], ['fx', 'Exchange rate (IQD per USD)', 'num'], ['reportDate', 'Report date override (blank = today)', 'date']]],
-  ['B. Thresholds (confidential)', [['poFrom', 'PO mandatory from (IQD)', 'num'], ['qcpoAbove', 'PO-cum-Quotation above (IQD)', 'num'], ['minQuotes', 'Minimum quotations for PO-cum-Quotation', 'num'], ['masoolLimit', 'Masool approval limit (IQD)', 'num'], ['masoolHoaLimit', 'Masool + Head of Accounts limit (IQD)', 'num'], ['priceTol', 'Price tolerance over MPL rate', 'pct'], ['billTol', 'Bill variance tolerance (billed vs received / PO)', 'pct'], ['cpvMax', 'Consolidated cash PV: max per bill (IQD)', 'num'], ['maxAdv', 'Maximum advance (% of PO value)', 'pct'], ['budgetWarn', 'Budget warning level (% of YTD budget)', 'pct'], ['hkTol', 'Tolerance on housekeeping norms', 'pct'], ['advDays', 'Advance to be adjusted within (days)', 'num']]],
+  ['B. Thresholds (confidential)', [['poFrom', 'PO mandatory from (IQD)', 'num'], ['qcpoAbove', 'PO-cum-Quotation above (IQD)', 'num'], ['minQuotes', 'Minimum quotations for PO-cum-Quotation', 'num'], ['masoolLimit', 'Masool approval limit (IQD)', 'num'], ['masoolHoaLimit', 'Aamil Saheb approval limit (IQD)', 'num'], ['priceTol', 'Price tolerance over MPL rate', 'pct'], ['billTol', 'Bill variance tolerance (billed vs received / PO)', 'pct'], ['cpvMax', 'Consolidated cash PV: max per bill (IQD)', 'num'], ['maxAdv', 'Maximum advance (% of PO value)', 'pct'], ['budgetWarn', 'Budget warning level (% of YTD budget)', 'pct'], ['hkTol', 'Tolerance on housekeeping norms', 'pct'], ['advDays', 'Advance to be adjusted within (days)', 'num']]],
   ['C. Service desk and maintenance', [['jobHighDays', 'Target - High priority (days)', 'num'], ['jobNormalDays', 'Target - Normal priority (days)', 'num'], ['ppmWindow', 'PPM due-soon window (days)', 'num'], ['amcWarn', 'AMC renewal warning (days before expiry)', 'num'], ['minPwd', 'Minimum password length', 'num']]],
 ];
 view('settings', 'Settings, thresholds & authority matrix', 'Settings', 'Masters', 'MH-01', () => {
@@ -2264,7 +2514,7 @@ view('settings', 'Settings, thresholds & authority matrix', 'Settings', 'Masters
     ['MPL approval / revision', 'MPL (MH-05)', 'Quotes for each new rate', 'Head of Accounts (password)']];
   return `<p class="note">${st.locked ? 'CONFIDENTIAL - locked with the approval password. The month and actual zaereen-days change without it (Dashboard, Budget).' : 'UNLOCKED - change the values, Save, then Lock Settings. Every unlock and lock is written to the Audit Log.'}</p>
   ${SET_FIELDS.map(([t, fs]) => `<section class="card"><h3>${t}</h3>${fields(fs.map(([k, l, ty]) => ({ k, l, t: ty, ed })), st)}</section>`).join('')}
-  <section class="card"><h3>D. Authority matrix (built from the thresholds)</h3><div class="tw"><table><thead><tr><th>Value of purchase / event</th><th>Document</th><th>Quotations</th><th>Approved by</th></tr></thead><tbody>${mx.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>
+  <section class="card"><h3>D. Authority matrix (built from the thresholds)</h3><p class="note">Above ${fmt(st.masoolHoaLimit)} IQD (the Aamil Saheb approval limit), the approval authority is with the Sigat of KUN.</p><div class="tw"><table><thead><tr><th>Value of purchase / event</th><th>Document</th><th>Quotations</th><th>Approved by</th></tr></thead><tbody>${mx.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>
   <section class="card"><h3>E. Budget lines (annual budget, IQD)</h3><div class="tw"><table><thead><tr><th>Code</th><th>Budget line</th><th>Basis</th><th class="n">Annual budget</th></tr></thead><tbody>${S.budgetLines.map((b, i) => `<tr><td>${esc(b.code)}</td><td>${esc(b.name)}</td><td>${ed ? `<select class="bb" data-i="${i}">${opts(['FIX', 'VAR'], b.basis, false)}</select>` : esc(b.basis)}</td><td class="n">${ed ? `<input class="ba n" data-i="${i}" value="${b.annual}">` : fmt(b.annual)}</td></tr>`).join('')}</tbody></table></div>
   <h4>Planned occupancy by month</h4><div class="grid g6">${MON.map((m, i) => `<div class="fld"><label>${m}</label><input class="occ n" data-m="${i}" value="${+(num(st.occupancy[i].plan) * 100).toFixed(1)}" ${ed ? '' : 'disabled'}><span class="unit">%</span></div>`).join('')}</div></section>
   <section class="card"><h3>F. Item categories</h3><div class="tw"><table><thead><tr><th>Category</th><th>Budget line</th><th>Default type</th></tr></thead><tbody>${S.categories.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.line)}</td><td>${esc(c.type)}</td></tr>`).join('')}</tbody></table></div></section>`;
@@ -2304,7 +2554,7 @@ ACT.editUser = id => {
   if (SHARED) setTimeout(fillPeople);
   modal(isNew ? 'New user' : u.id, fields([
     { k: 'id', l: 'User ID (no spaces)', t: 'text', ed: isNew, req: 1 }, { k: 'name', l: 'Full name', t: 'text', req: 1 }, { k: 'desig', l: 'Designation', t: 'text' },
-    { k: 'role', l: 'Role', t: 'sel', o: ROLES, blank: false }, { k: 'active', l: 'Active (Y/N)', t: 'sel', o: ['Y', 'N'], blank: false }, { k: 'contact', l: 'Phone / e-mail (for resets)', t: 'text' }], u)
+    { k: 'role', l: 'Role', t: 'sel', o: roleList(), blank: false }, { k: 'active', l: 'Active (Y/N)', t: 'sel', o: ['Y', 'N'], blank: false }, { k: 'contact', l: 'Phone / e-mail (for resets)', t: 'text' }], u)
     + (SHARED ? `<h4>Linked log-in</h4><div class="grid"><div class="fld full"><label for="psq">Search by name or email</label><input id="psq" autocomplete="off" placeholder="Type a name..." oninput="App.peopleSearch(this.value)" onfocus="App.peopleSearch(this.value)">
       <input type="hidden" id="pcid" value="${esc(u.cid || '')}"><div id="psr" class="psr"></div><small id="pcur">${u.cid ? 'Currently linked: <span data-cid="' + esc(u.cid) + '">...</span> <a href="#" onclick="event.preventDefault();App.pickPerson(\'\',\'\')">Unlink</a>' : 'Not linked yet. The person must have access to this app.'}${!u.cid && u.reqCid ? '<br><b>Waiting request from <span data-cid="' + esc(u.reqCid) + '">...</span></b> - use Approve link request below.' : ''}</small></div></div>` : ''),
     [{ l: 'Save', cls: 'pri', fn: b => {
@@ -2325,10 +2575,10 @@ ACT.editUser = id => {
 function actionRightsHtml() {
   const lim = (S.access && S.access.__actions) || {};
   const rows = ACTIONS.map(([id, label, mod]) => {
-    const allowed = lim[id] || ROLES.filter(r => S.access[mod] && S.access[mod][r] === 'E');
-    return `<tr><td>${esc(label)}</td><td>${esc(mod)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? '<span class="muted">always</span>' : `<input type="checkbox" class="aa" data-a="${id}" data-r="${esc(r)}" ${allowed.includes(r) ? 'checked' : ''}>`}</td>`).join('')}</tr>`;
+    const allowed = lim[id] || roleList().filter(r => S.access[mod] && S.access[mod][r] === 'E');
+    return `<tr><td>${esc(label)}</td><td>${esc(mod)}</td>${roleList().map(r => `<td>${r === 'Admin' ? '<span class="muted">always</span>' : `<input type="checkbox" class="aa" data-a="${id}" data-r="${esc(r)}" ${allowed.includes(r) ? 'checked' : ''}>`}</td>`).join('')}</tr>`;
   }).join('');
-  return `<h3>Who may create records</h3><p class="muted">A ticked role may create the record. The page must also be editable (E) for that role. Admin always may.</p><div class="tw"><table class="acc"><thead><tr><th>Action</th><th>Page</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<h3>Who may create records</h3><p class="muted">A ticked role may create the record. The page must also be editable (E) for that role. Admin always may.</p><div class="tw"><table class="acc"><thead><tr><th>Action</th><th>Page</th>${roleList().map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function resetLoginPassword(u) {
   modal('Reset log-in password - ' + u.id, `<p>Set a temporary password for ${esc(u.name)} and give it to them personally. They sign in with their email and this password. Their open sessions end.</p><div class="grid"><div class="fld"><label for="rp1">Temporary password (at least 8 characters)</label><input id="rp1" type="password" autocomplete="new-password"></div><div class="fld"><label for="rp2">Type it again</label><input id="rp2" type="password" autocomplete="new-password"></div></div>`,
@@ -2344,8 +2594,32 @@ function resetLoginPassword(u) {
 }
 view('access', 'Access rights', 'Access', 'Admin', 'Admin', () => {
   tools('<button class="btn pri" data-act="saveAccess">Save rights</button>');
-  return `<p class="muted">E = can make entries, V = view only, H = hidden. Admin always has full access. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${ROLES.map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${ROLES.map(r => `<td>${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
+  return rolesCard() + `<p class="muted">E = can make entries, V = view only, H = hidden. The Admin column is fixed: Admin can change every page, and the Audit log, Notifications and Number log are view only for Admin because the app writes them itself. Within a page, some fields can be changed only by named roles (e.g. only the Internal Auditor marks the audit status; only Accounts enters payment details). Changes apply at the next page view.</p><div class="tw"><table class="acc"><thead><tr><th>Page</th><th>Format</th>${roleList().map(r => `<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>${MODULES.map(([m, f]) => `<tr><td>${esc(m)}</td><td>${esc(f)}</td>${roleList().map(r => `<td class="vcol">${r === 'Admin' ? esc(accVal(m, 'Admin')) : `<select class="ar r${accVal(m, r)}" data-m="${esc(m)}" data-r="${esc(r)}" onchange="this.className='ar r'+this.value">${opts(['E', 'V', 'H'], accVal(m, r), false)}</select>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${actionRightsHtml()}`;
 });
+function rolesCard() {
+  const list = roleList();
+  const rows = list.map(r => `<tr><td>${esc(r)}</td><td>${isBaseRole(r) ? 'Base role' : 'Added'}</td><td>${roleBaseOf(r) ? esc(roleBaseOf(r)) : ''}</td><td>${isBaseRole(r) ? '' : `<button class="btn ghost sm" data-act="roleDel" data-id="${esc(r)}">Remove</button>`}</td></tr>`).join('');
+  return `<section class="card"><h3>Roles (${list.length} of ${MAX_ROLES})</h3><p class="muted">Add a role, then set its rights in the table below. A new role starts hidden (H) on every page. A role can be removed only when no user has it. Base roles cannot be removed.</p><div class="tw"><table class="lt"><thead><tr><th>Role</th><th>Kind</th><th>Acts as (for named checks)</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="row gap"><input id="newRole" placeholder="New role name" maxlength="40"> <button class="btn pri" data-act="roleAdd">Add role</button></div></section>`;
+}
+ACT.roleAdd = () => {
+  const name = (($('#newRole') || {}).value || '').trim();
+  if (!name) return toast('Type the role name.', 'bad');
+  const list = roleList().slice();
+  if (list.some(r => r.toLowerCase() === name.toLowerCase())) return toast('That role already exists.', 'bad');
+  if (list.length >= MAX_ROLES) return toast('Up to ' + MAX_ROLES + ' roles can be set up. Remove an unused role first.', 'bad');
+  S.roles = { list: [...list, name], base: { ...((S.roles && S.roles.base) || ROLE_BASE) } };
+  Object.keys(S.access).forEach(p => { S.access[p][name] = 'H'; });
+  commit('Role added', name); render(); toast('Role added. Set its rights in the table below.', 'ok');
+};
+ACT.roleDel = id => {
+  if (isBaseRole(id)) return toast('A base role cannot be removed.', 'bad');
+  const inUse = (S.users || []).filter(u => u.role === id).length;
+  if (inUse) return toast(inUse + ' user(s) have this role. Change them first.', 'bad');
+  const base = { ...((S.roles && S.roles.base) || ROLE_BASE) }; delete base[id];
+  S.roles = { list: roleList().filter(r => r !== id), base };
+  Object.keys(S.access).forEach(p => { delete S.access[p][id]; });
+  commit('Role removed', id); render(); toast('Role removed.', 'ok');
+};
 ACT.saveAccess = () => { document.querySelectorAll('select.ar').forEach(x => { S.access[x.dataset.m] = S.access[x.dataset.m] || {}; S.access[x.dataset.m][x.dataset.r] = x.value; });
   const lim = {}; ACTIONS.forEach(([id]) => { lim[id] = [...document.querySelectorAll('input.aa[data-a="' + id + '"]')].filter(x => x.checked).map(x => x.dataset.r); });
   S.access.__actions = lim; commit('Access rights changed'); render(); toast('Rights saved.', 'ok'); };
@@ -2355,7 +2629,7 @@ view('auditlog', 'Audit log', 'Audit Log', 'Admin', 'Log', () => `<p class="mute
 const cpvList = () => (S.cpvs = S.cpvs || []);
 ACT.newCPV = () => {
   if (!canAct('cpv.create')) return toast('You cannot create consolidated PVs.', 'bad');
-  const cands = S.bills.filter(b => b.audit === 'Clear' && !b.payDate && !b.cpv && num(C.bill[b.no].net) > 0 && num(C.bill[b.no].net) <= num(S.settings.cpvMax));
+  const cands = S.bills.filter(b => b.audit === 'Clear' && !b.payDate && !b.cpv && KUNRules.cashPvEligible(num(C.bill[b.no].net), num(S.settings.cpvMax)));
   if (!cands.length) return toast('No cleared bills below the consolidated PV limit are waiting.', 'bad');
   modal('New consolidated cash PV', `<p class="muted">Tick the cleared bills to pay together on one cash voucher. Each bill must be at most ${fmt(S.settings.cpvMax)} IQD.</p>` + table('cpvpick', [
     { h: '', v: b => `<input type="checkbox" class="cpvck" value="${esc(b.no)}">` }, { h: 'Bill entry no.', v: b => esc(b.no) },
@@ -2376,10 +2650,11 @@ ACT.payCPV = no => {
   if (cp.paidOn) return toast('This voucher is already paid.', 'bad');
   if (!canEdit('Consolidated PV') || !may('Accounts')) return toast('Only Accounts records the payment of a consolidated PV.', 'bad');
   modal('Record payment - ' + no, `<p class="muted">Paying ${cp.bills.length} bill(s): ${esc(cp.bills.join(', '))}</p>` + fields([
-    { k: 'paidOn', l: 'Payment date', t: 'date', ed: true, req: 1 }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
+    { k: 'paidOn', l: 'Payment date (today or earlier)', t: 'date', ed: true, req: 1, max: 'today' }, { k: 'paidRef', l: 'Payment reference / cash receipt', t: 'text', ed: true }], { paidOn: isoDate(new Date()), paidRef: '' }),
     [{ l: 'Record payment', cls: 'pri', fn: body => {
       const o = { paidOn: '', paidRef: '' }; readInto(body, o);
       if (!o.paidOn) return toast('Enter the payment date.', 'bad');
+      if (futureDate(o.paidOn)) return toast('The payment date cannot be in the future. Enter today or an earlier date.', 'bad');
       cp.paidOn = o.paidOn; cp.paidRef = o.paidRef;
       cp.bills.forEach(n => { const b = S.bills.find(x => x.no === n); if (b) { b.payDate = o.paidOn; b.payRef = 'Cash - ' + no + (o.paidRef ? ' ' + o.paidRef : ''); b.pv = no; } });
       closeModal(); commit('Consolidated PV paid', no); render();
@@ -2398,15 +2673,15 @@ view('cpv', 'Consolidated cash PV', 'Consolidated PV', 'Bills & payment', 'MH-16
 
 /* ---------- Notifications (workbook events). E-mail needs a mail server, which this local server does not have: events are logged and shown as pending actions. ---------- */
 const NOTIFY_EVENTS = {
-  PO_SAVED: { to: ['Internal Auditor', 'GRN Officer'], text: 'PO saved' },
+  PO_SAVED: { to: ['Internal Auditor', 'GRN Officer', 'Store Keeper'], text: 'PO saved' },
   GRN_RECEIVED: { to: ['Maintenance Masool'], text: 'Goods received (GRN)' },
   SRN_PREPARED: { to: ['Internal Auditor'], text: 'Service receipt (SRN) prepared' },
   ADVANCE_REQUESTED: { to: ['Head of Accounts', 'Internal Auditor'], text: 'Advance requested' },
   BILL_ENTERED: { to: ['Internal Auditor'], text: 'Bill entered' },
-  VARIANCE_APPROVAL: { to: ['Head of Accounts', 'Sigat member'], text: 'Bill needs variance approval' },
-  BILL_CLEARED: { to: ['Head of Accounts', 'Accounts / cashier', 'Maintenance Masool'], text: 'Bill cleared for payment' },
+  VARIANCE_APPROVAL: { to: ['Head of Accounts', 'Sigat'], text: 'Bill needs variance approval' },
+  BILL_CLEARED: { to: ['Head of Accounts', 'Accounts', 'Maintenance Masool'], text: 'Bill cleared for payment' },
   BILL_HOLD: { to: ['Maintenance Masool', 'Head of Accounts'], text: 'Bill put on hold' },
-  CPV_CREATED: { to: ['Head of Accounts', 'Accounts / cashier'], text: 'Consolidated cash PV created' },
+  CPV_CREATED: { to: ['Head of Accounts', 'Accounts'], text: 'Consolidated cash PV created' },
   CPV_PAID: { to: ['Internal Auditor', 'Maintenance Masool'], text: 'Consolidated cash PV paid' },
 };
 const ACTION_EVENT = { 'PO number issued': 'PO_SAVED', 'GRN saved': 'GRN_RECEIVED', 'SRN saved': 'SRN_PREPARED', 'Advance number issued': 'ADVANCE_REQUESTED', 'Advance updated': 'ADVANCE_REQUESTED', 'Bill entry number issued': 'BILL_ENTERED', 'Consolidated PV created': 'CPV_CREATED', 'Consolidated PV paid': 'CPV_PAID' };
@@ -2448,7 +2723,7 @@ ACT.notifCopy = id => {
 };
 view('notifs', 'Notifications and pending actions', 'Notifications', 'Admin', 'Log', () => {
   const me = U ? (U.desig || '') : '';
-  const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
+  const mine = notifList().filter(n => !n.done && (notifForMe(n) || may('Admin')));
   const all = notifList().slice().reverse();
   return `<p class="muted">Every notice the workbook sends is logged here. E-mail is not sent by the application (no mail server is set up). Use Copy for e-mail, or the E-mail link, to send a notice yourself. Each notice stays here until it is marked done.</p>`
     + `<section class="card"><h3>Pending actions <span class="muted">${mine.length}</span></h3>` + table('notifmine', [
@@ -2460,9 +2735,11 @@ view('notifs', 'Notifications and pending actions', 'Notifications', 'Admin', 'L
       { h: 'Status', v: n => n.done ? esc('Done by ' + n.doneBy + ' ' + fdt(n.doneOn)) : esc(n.status) }], all, { name: 'Notice log' }) + '</section>';
 });
 
+// A notice is for this person if it names their designation, their role or their user ID (version 2.2 notices name users).
+const notifForMe = n => { const to = n.to || []; return to.includes(U.desig) || to.includes(U.role) || to.includes(U.id); };
 view('mydesk', 'My desk', 'My desk', 'Overview', 'Home', () => {
   const me = U ? (U.desig || '') : '';
-  const mine = notifList().filter(n => !n.done && (n.to.includes(me) || may('Admin')));
+  const mine = notifList().filter(n => !n.done && (notifForMe(n) || may('Admin')));
   const openJobs = (S.jobs || []).filter(j => !j.completed);
   const quick = [['po.create', 'newPO', 'New purchase order'], ['grn.create', 'newGRN', 'Receive goods (GRN)'], ['srn.create', 'newSRN', 'Service receipt (SRN)'],
     ['bill.create', 'newBILL', 'Enter a bill'], ['issue.create', 'newISS', 'Issue slip'], ['job.create', 'newJob', 'New job card'],
@@ -2495,19 +2772,26 @@ view('data', 'Data, backup & go-live', 'Users', 'Admin', 'Admin', () => `
   <section class="card"><h3>Go-live</h3><p>At go-live (after the pilot) the Head of Accounts removes the October 2026 example rows and example numbers. Masters (items, vendors, MPL) are cleared separately so the real lists can be entered.</p>
   <button class="btn danger" data-act="clearEx" data-id="tx">Clear example transactions &amp; numbers</button> <button class="btn danger" data-act="clearEx" data-id="masters">Clear example items, vendors &amp; MPL</button></section>
   <section class="card"><h3>Reset</h3><p>Reload the original example data (pilot / training). Users and passwords are reset too.</p><button class="btn danger" data-act="resetAll">Reset to example data</button></section>`);
-ACT.backup = () => { download('KUN_MH_backup_' + nowDT().replace(/[:T]/g, '-') + '.json', JSON.stringify(S, null, 1), 'application/json'); logAudit('Backup downloaded'); saveData(); };
+// Finding 9: a backup holds the business records, so it is kept to those. Staff contact details
+// (e-mail, phone and similar) are left out of the file. Restore keeps the current people in shared mode.
+ACT.backup = () => {
+  const out = KUNRules.stripStaffContacts(S);
+  download('KUN_MH_backup_' + nowDT().replace(/[:T]/g, '-') + '.json', JSON.stringify(out, null, 1), 'application/json');
+  logAudit('Backup downloaded', 'staff contact details left out');
+  saveData();
+};
 App.restore = inp => {
   const f = inp.files[0]; if (!f) return;
   const rd = new FileReader();
   rd.onload = () => {
-    try { const d = JSON.parse(rd.result); if (d.meta?.app !== 'KUN-MH' || !Array.isArray(d.pos)) throw new Error('Not a KUN M&H backup file'); confirmBox('Restore backup?', (SHARED ? 'The shared data for every user' : 'Everything in this browser') + ' is replaced with the backup of ' + esc(f.name) + '.', 'Restore', () => {
+    try { const d = JSON.parse(rd.result); if (d.meta?.app !== 'KUN-MH' || !Array.isArray(d.pos)) throw new Error('Not a KUN M&H backup file'); typedConfirm('Restore backup?', (SHARED ? 'The shared data for every user' : 'Everything in this browser') + ' is replaced with the backup of ' + esc(f.name) + ' (' + recordCount(d) + ' records).', 'RESTORE', 'Restore', () => {
       const me = U.id;
       if (SHARED) { d.users = S.users; }   // keep the current people links
       S = d; S.hkExplain = S.hkExplain || {}; S.counts = S.counts || {}; S.linenCounts = S.linenCounts || {};
       U = S.users.find(u => u.id === me) || null; closeModal();
       if (!U) { saveData(); return renderLogin(); }
       commit('Backup restored', f.name); render(); toast('Backup restored.', 'ok');
-    }, { danger: true }); }
+    }); }
     catch (e) { toast('Could not read the backup: ' + e.message, 'bad'); }
   };
   rd.readAsText(f);
@@ -2526,10 +2810,10 @@ ACT.clearEx = which => needPassword(which === 'tx' ? 'Clear example transactions
   S.meta.examples = S.pos.some(p => p.ex) || S.items.some(i => i.ex);
   closeModal(); commit(which === 'tx' ? 'Example transactions cleared' : 'Example masters cleared'); render(); toast('Done.', 'ok');
 });
-ACT.resetAll = () => confirmBox('Reset to example data?', SHARED ? 'The shared data for every user is replaced by the original example data. Users and their links are kept. Download a backup first if you need the current data.' : 'Everything in this browser is replaced by the original example data, including users and passwords. Download a backup first if you need the current data.', 'Reset', () => {
+ACT.resetAll = () => typedConfirm('Reset to example data?', (SHARED ?'The shared data for every user is replaced by the original example data. Users and their links are kept. Download a backup first if you need the current data.' : 'Everything in this browser is replaced by the original example data, including users and passwords. Download a backup first if you need the current data.') + ' This replaces ' + recordCount(S) + ' records.', 'RESET', 'Reset', () => {
   if (SHARED) { const users = S.users, me = U.id; S = seedData(); S.users = users; U = S.users.find(u => u.id === me); closeModal(); commit('Reset to example data'); render(); return; }
   S = seedData(); saveData(); U = null; closeModal(); renderLogin();
-}, { danger: true });
+});
 
 </script>
 <script>
@@ -2541,7 +2825,7 @@ ACT.resetAll = () => confirmBox('Reset to example data?', SHARED ? 'The shared d
 const REC = { pos: 'no', advances: 'no', grns: 'no', srns: 'no', bills: 'no', issues: 'no', jobs: 'no', numlog: 'no', laundry: 'id', ppm: 'id', rooms: 'no', users: 'id', items: 'code', vendors: 'code', audit: 'k', cpvs: 'no', notifs: 'id' };
 // Configuration kept as one document each.
 // meta first: it carries the owner, which is checked on later writes
-const CFG = ['meta', 'settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain'];
+const CFG = ['meta', 'settings', 'budgetLines', 'categories', 'lists', 'mpl', 'access', 'counts', 'linenCounts', 'hkExplain', 'roles'];
 
 let DB = null, USR = null, ME = { id: null, name: '' }, IS_OWNER = false, READONLY = false, READY = false;
 let writeQ = Promise.resolve(), writing = 0, writeErr = '', PENDING = false, gateMsg = '', bootTimer = null;
@@ -2675,6 +2959,7 @@ function buildFromRemote() {
     out.sort((a, b) => (a.o - b.o) || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     N[c] = out.map(x => x.r);
   });
+  if (!N.roles) N.roles = defaultRoles();
   S = N; S.hkExplain = S.hkExplain || {}; S.counts = S.counts || {}; S.linenCounts = S.linenCounts || {}; S.meta = S.meta || { app: 'KUN-MH' };
 }
 function applyRemote(force) {
@@ -2991,13 +3276,13 @@ const IMPORTS = {
     can: () => canEdit('Vendors'), why: () => 'Needs entry rights on Vendors (MH-04).', list: () => S.vendors,
     cols: [
       { k: 'code', h: 'Vendor code', al: ['code'], note: 'Leave blank for a new vendor - the next V- number is given.' },
-      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'contractor', 'supplier', 'supplier name', 'company', 'company name', 'firm', 'firm name', 'party name'], note: 'Unique. Cannot change once used on a PO or bill.' },
+      { k: 'name', h: 'Vendor / contractor name', req: 1, al: ['name', 'vendor', 'vendor name', 'vendor / contractor', 'vendor/contractor', 'vendor contractor', 'contractor', 'supplier', 'supplier name', 'company', 'company name', 'firm', 'firm name', 'party name'], note: 'Unique. Cannot change once used on a PO or bill.' },
       { k: 'type', h: 'Type', t: 'pick', o: () => S.lists.vendorTypes, al: ['vendor type', 'supplier type'] },
       { k: 'supplies', h: 'Supplies (category)', al: ['supplies', 'category', 'items supplied', 'products', 'services', 'nature of business', 'scope'] },
       { k: 'contact', h: 'Contact person', al: ['contact', 'contact name', 'person'] },
       { k: 'phone', h: 'Phone', al: ['mobile', 'telephone', 'tel', 'phone no', 'phone number', 'mobile no', 'mobile number', 'contact no', 'contact number', 'whatsapp'] },
-      { k: 'avl', h: 'On AVL (Y/N)', t: 'yn', al: ['avl', 'on avl', 'approved'], note: 'Default Y.' },
-      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
+      { k: 'avl', h: 'On AVL (Y/N)', t: 'text', al: ['avl', 'on avl', 'on avl?', 'approved', 'ok'], note: 'Every vendor is approved when it is imported; any value here (for example OK or Y) is accepted.' },
+      { k: 'bank', h: 'Bank account name & bank (verified)', al: ['bank', 'bank (verified)', 'bank details', 'bank account', 'account', 'account no', 'account number', 'iban'] },
       { k: 'remarks', h: 'Remarks', al: ['notes', 'comments'] },
     ],
     need: u => u.has('code') || u.has('name') ? '' : 'A "Vendor code" or "Vendor / contractor name" column is needed.',
@@ -3015,14 +3300,16 @@ const IMPORTS = {
       }
     },
     blank: () => ({ code: '', name: '', type: 'Supplier', supplies: '', contact: '', phone: '', avl: 'Y', bank: '', remarks: '' }),
+    fix: o => { o.avl = 'Y'; },
     show: ['code', 'name', 'type', 'phone', 'avl'],
   },
   mpl: {
     label: 'Master price list rates', fmt: 'MH-05', sheet: 'MPL', view: 'mpl', match: 'Item code + vendor',
     desc: 'Approved rate per item and vendor, with validity and basis. Your own price list can go in directly: vendors not yet on the vendor list and items not yet in the Items list are added from it.',
-    can: () => canEdit('MPL') && S.mpl.status !== 'Approved',
-    why: () => S.mpl.status === 'Approved' && canEdit('MPL') ? 'The MPL is approved and locked - click Revise MPL first, then import, then approve again.' : 'Needs entry rights on the MPL (MH-05).',
-    list: () => S.mpl.rows,
+    can: () => canEdit('Items'),
+    why: () => 'Needs entry rights on Items. Imported rates are proposed rates; the Head of Accounts approves them on the Item rates page.',
+    list: () => mplRows(),
+    apply: o => { const it = S.items.find(i => i.code === o.item); if (!it) return; if (num(o.rate) > 0) it.mpl = num(o.rate); if (o.vendor) it.pref = o.vendor; if (o.basis) it.basis = o.basis; },
     cols: [
       { k: 'item', h: 'Item code', al: ['code', 'item no', 'item number', 'item id'], note: 'A code from the Items list. Blank: the item is found by its name; a new item gets the next code of its category.' },
       { k: '_name', h: 'Item / service name', al: ['item', 'item name', 'name', 'description', 'item description', 'service', 'particulars', 'material'], get: o => itemName(o.item), note: 'Finds the item when there is no code; the name of a new item.' },
@@ -3064,7 +3351,7 @@ const IMPORTS = {
         }
       }
     },
-    find: r => r.item && r.vendor ? S.mpl.rows.find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
+    find: r => r.item && r.vendor ? mplRows().find(x => x.item === r.item && x.vendor === r.vendor) || null : null,
     key: r => r.item && r.vendor ? r.item + ' | ' + r.vendor : '',
     check: (r, ex, ctx, E) => {
       if (r.rate !== undefined && r.rate <= 0) E.push('Rate must be above zero');
@@ -3147,7 +3434,7 @@ const IMPORTS = {
       { k: 'id', h: 'User ID', req: 1, t: 'up', al: ['id', 'user', 'userid'], note: 'No spaces; stored in capitals.' },
       { k: 'name', h: 'Full name', req: 1, al: ['name'] },
       { k: 'desig', h: 'Designation', al: ['desig', 'title'] },
-      { k: 'role', h: 'Role', req: 1, t: 'pick', o: () => ROLES, note: 'Decides the pages the user sees (Access rights).' },
+      { k: 'role', h: 'Role', req: 1, t: 'pick', o: () => roleList(), note: 'Decides the pages the user sees (Access rights).' },
       { k: 'active', h: 'Active (Y/N)', t: 'yn', al: ['active'], note: 'N blocks the user. Default Y.' },
       { k: 'contact', h: 'Phone / e-mail', al: ['contact', 'phone', 'email', 'e-mail'] },
     ],
@@ -3275,7 +3562,7 @@ function impCard(kind, inModal) {
     ${ok ? `<div class="vtools"><button class="btn" data-act="impTpl" data-id="${kind}">Download Excel template</button>
       <label class="btn pri">Import Excel file<input type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onchange="App.importFile('${kind}', this)"></label>
       ${inModal ? '' : `<a href="#" data-act="goto" data-id="${sp.view}" class="small">Open the list</a>`}</div>`
-    : `<p class="small">${flag(sp.why())}</p>${kind === 'mpl' && canEdit('MPL') && S.mpl.status === 'Approved' ? '<button class="btn" data-act="reviseMPL">Revise MPL</button>' : ''}`}`;
+    : `<p class="small">${flag(sp.why())}</p>`}`;
 }
 view('import', 'Import master data from Excel', 'Items', 'Masters', 'Import', () => `
   <section class="card"><h3>How it works</h3><ol class="flow">
@@ -3376,8 +3663,8 @@ function impApply() {
     const ni = r.raw._newItem, nv = r.raw._newVendor;
     if (ni && !S.items.includes(ni)) { if (S.items.some(i => lc(i.code) === lc(ni.code) || lc(i.name) === lc(ni.name))) return; S.items.push(ni); if (!S.lists.units.includes(ni.unit)) S.lists.units.push(ni.unit); nI++; }
     if (nv && !S.vendors.includes(nv)) { if (S.vendors.some(v => lc(v.code) === lc(nv.code) || lc(v.name) === lc(nv.name))) return; S.vendors.push(nv); nV++; }
-    if (r.action === 'New') { const o = Object.assign(sp.blank(), clean(r.raw)); if (sp.fix) sp.fix(o); sp.list().push(o); nN++; }
-    else { Object.assign(r.ex, clean(r.raw)); if (sp.fix) sp.fix(r.ex); nU++; }
+    if (r.action === 'New') { const o = Object.assign(sp.blank(), clean(r.raw)); if (sp.fix) sp.fix(o); if (sp.apply) sp.apply(o); else sp.list().push(o); nN++; }
+    else { if (sp.apply) sp.apply(Object.assign({}, r.ex, clean(r.raw))); else { Object.assign(r.ex, clean(r.raw)); if (sp.fix) sp.fix(r.ex); } nU++; }
   });
   const extra = (nV ? ', ' + nV + ' vendor(s) added' : '') + (nI ? ', ' + nI + ' item(s) added' : '');
   if (kind === 'rooms' && IMP.replace) {

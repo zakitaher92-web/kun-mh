@@ -1,5 +1,7 @@
 # KUN Maintenance & Housekeeping - Installation Guide (Windows Server 2016 with IIS)
 
+This guide is for **version 2.2.0** of the app (the package folder that contains `setup\`, `server\` and `index.html`).
+
 The app runs on one Windows Server. Its records are stored in a PostgreSQL 16 database on the same server. **IIS** (the web server built into Windows) receives the requests from other computers on the office network and passes them to the app. Other people open the app in their browser; they do not install anything.
 
 ```
@@ -23,11 +25,20 @@ The Billing app's PostgreSQL (service `postgresql-x64-16`, port 5432) is not cha
 
 Set-up takes about one hour the first time. Node.js and the PostgreSQL programs are already installed on the server, so you start at Part 1.
 
+**Which part to follow**
+
+| You want to | Go to |
+|---|---|
+| Install a new office server | Parts 1 to 6, then Part 9 (access rights and the current version) |
+| Update an office server that runs version 1.9.x or 1.9.2 | Part 10, section A (the latest app files); Part 9 for the 1.9.2 checks |
+| Upgrade a server that is still on a version before 1.9 | Part 7, then Part 8 |
+| Update or check the hosted site (Vercel), or move its database to tables | Part 10, sections B and C |
+
 **Before you start**
 
 - You need an administrator account on the server, and the server must be on the office network.
 - Use Node.js **22 LTS**. It is the version known to run well on Windows Server 2016.
-- Copy the app folder `kun-mh` to a permanent place on the server, for example `C:\KUN\kun-mh`. Do not run it from the Downloads folder or from a network share.
+- Copy the app folder `kun-mh` to a permanent place on the server, for example `C:\KUN\kun-mh`. Do not run it from the Downloads folder or from a network share. The folder holds `setup\`, `server\`, `index.html` and the other files of the package. The Vercel-only files (`api\`, `vercel.json`) are not used on the office server and can be left out.
 
 ---
 
@@ -88,6 +99,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 - Steps 1, 7 and `check-access` are safe to repeat.
 - Steps 3 and 4 ask you to type passwords. Nothing is shown while you type; that is normal.
 - **Step 3** asks you to choose a password for the `postgres` user of the **KUN MH** database. This is not the Billing app's password. Then it asks for a password for the app database user `kunmh`. Write both down.
+- **Step 4** writes `server\.env` with the port and database settings only. It does not set `DATA_MODE`, so the office server uses the original document layout (`kv_docs`). Keep it that way unless the database has been migrated first (Part 10, section A).
 - **Step 5** asks for an email, a name and a password (at least 8 characters) for each person. Give each person their password **in person**.
 - **Step 7** asks these questions:
   1. **Which computers may open the app.** Press Enter for *LocalSubnet* (computers on the same network as the server). Type one or more ranges separated by commas, such as `10.10.0.0/16,10.20.0.0/16`, if the office uses several networks. Ask IT if you are not sure.
@@ -110,7 +122,8 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 | Check the app's log | Open `kun-mh\logs\server.log` in Notepad. The newest lines are at the bottom. |
 | Start or stop the KUN MH database | **services.msc** > **postgresql-kun-16** (not the Billing service **postgresql-x64-16**) |
 | Back up | Double-click `setup\8-backup.bat` (weekly). The backup is saved in `C:\KUN\backups` |
-| Restore a backup | In the app: **Admin > Data > Restore from backup** |
+| Restore a backup | In the app: **Admin > Data > Restore from backup**. Type `RESTORE` to confirm; the dialog shows how many records it replaces |
+| Reset to example data | In the app: **Admin > Data > Reset to example data**. Type `RESET` to confirm; the dialog shows how many records it replaces. Do not use on the live system |
 | Add a person | Double-click `setup\5-create-admin.bat` |
 | Change a password or block a leaver | In a Command Prompt in the `server` folder: `npm run user -- password EMAIL "NEW-PASSWORD"` or `npm run user -- disable EMAIL` |
 | Change who may open the app, or the ports | Re-run `setup\7-setup-iis.bat` and answer the questions again |
@@ -184,6 +197,10 @@ If you use a self-signed certificate, each browser shows a warning until the cer
 | *Wrong email or password* in the app | Check the spelling. An administrator can reset the password with the command in Part 3 |
 
 | `psql.exe was not found` (Part 7, step 4) | Install PostgreSQL 16 with the Command Line Tools (Part 1b), then run Part 7, step 4 again |
+| *Your role may not change this page* (a save is refused) | The person's role cannot edit that page. Check **Admin > Access rights**; the Head of Accounts can change it (Part 9) |
+| A page shows no records, or *Nothing here yet* where records are expected | The role cannot see the pages that use those records (Part 9). Check **Admin > Access rights** |
+| `Live-update connection lost, reconnecting` in `logs\server.log` | The app keeps retrying the database connection by itself. If it stays, check that PostgreSQL is running (service `postgresql-kun-16`) and restart the app |
+| `Type RESET exactly to confirm` / `Type RESTORE exactly to confirm` | The confirmation word was not typed exactly (capitals). Nothing was reset or restored |
 | `The app is in a user profile folder` (step 7) | IIS cannot read the app there. Move the folder to `C:\KUN\kun-mh` (Part 7, step 1c), then run `6-start-app.bat` and `7-setup-iis.bat` from the new folder |
 | Settings show blank job targets, or the job-card priority list still shows *Urgent* | The data upgrade has not run. Run Part 7, step 4 |
 | `Could not connect to the database` during the data upgrade | Check that the service `postgresql-kun-16` is running and that the `kunmh` password is right |
@@ -192,7 +209,7 @@ When you report a problem, send the text from the script window, the output of `
 
 ---
 
-## Part 7 - Upgrade an existing installation (version 1.9)
+## Part 7 - Upgrade an existing installation (version 1.9, for servers older than 1.9)
 
 Use this part when KUN MH is already running on a server (for example the hosted copy, last installed from the package of 4 November 2026) and you are bringing it up to version 1.9. The database, the log-ins and the transactions (POs, GRNs, bills, job cards, payments, audit log) stay as they are. Master data is replaced with the 1.9 masters.
 
@@ -290,7 +307,7 @@ Rooms (`m_rooms`) are not part of the master import. Their status keeps changing
 
 ---
 
-## Part 8 - Apply the latest changes to the local server
+## Part 8 - Apply the 1.9 update changes to the local server (for servers on 1.9)
 
 Use this part to bring an installation that already runs version 1.9 (Part 7) up to the latest changes. It applies to the local server (the office server running the app) and to a copy of the same version. The database layout does not change, and no packages are added. Only the app page and the server code change, so a restart is needed.
 
@@ -357,6 +374,156 @@ No data needs converting. The new access rights default to the existing page rig
 
 ---
 
+## Part 9 - Apply the version 1.9.2 changes (access, live updates, backups)
+
+Use this part on an installation that already runs version 1.9 with the Part 8 changes. It applies to the local server and to a copy of the same version. The database layout does not change and no packages are added. A restart is needed, and the access rules take effect as soon as the new files run.
+
+**What changes**
+
+| Area | Change | Who notices |
+|---|---|---|
+| Access, reads (`server\src\permissions.js`, `server\src\app.js`) | A person now sees only the records of the pages their role can see (Admin > Access rights). Records of pages the role cannot see come back empty. Items, settings and lists, the user list, rooms and the logs stay visible to everyone | Every user. Check the roles before the update (below) |
+| Access, writes | A save to a page the role cannot edit is refused with *Your role may not change this page* | Every user who edits records |
+| Live updates (`server\src\server.js`) | Changes are sent through the database (PostgreSQL `LISTEN`/`NOTIFY`). Several copies of the server can run, and every copy passes on the changes it hears | Nobody (no change in use) |
+| Backups (**Admin > Data**) | The backup file keeps the business records and leaves out staff e-mail and phone numbers. Each backup is recorded in the audit log | Admin |
+| Restore and reset (**Admin > Data**) | Type `RESTORE` or `RESET` to confirm. The dialog shows how many records it replaces | Admin |
+| Phone and tablet screens | The Import page fits a 390-pixel screen; long button labels and status tags wrap | Users on phones |
+| Calculation rules (`rules.js`) | Approval limits, bill tolerance, cash PV limit and advance status are kept in one file, checked by automatic tests | Nobody (same results) |
+| Testing (`server\testing\`, `npm test`) | Automatic tests and a local test server. The test server is for trying screens only and must not be run on the live server | Developers only |
+
+**Before you start**
+
+- **Check the roles.** Users who must see a page need a role that can see it. In **Admin > Access rights**, check every role against the pages it uses. The Head of Accounts must agree the table before users are told about the change.
+- Make a backup from the last update, or make one now: run `setup\8-backup.bat`.
+- Tell users to save their work and log out.
+
+**Steps**
+
+1. **Stop the app.** Double-click `setup\stop-app.bat`.
+2. **Back up.** Run `setup\8-backup.bat` and check that the new file in `C:\KUN\backups` is not empty.
+3. **Copy the new files.** Use the same command as Part 8, step 2, with the new package folder:
+   ```bat
+   robocopy "NEW-PACKAGE\kun-mh" "C:\KUN\kun-mh" /E /XF .env /XD node_modules logs iis
+   ```
+   Robocopy exit codes 0 to 7 mean success. The new files are `rules.js`, `server\src\permissions.js` and the folder `server\testing`.
+4. **Check the packages.** Nothing new is installed. The only change to `server\package.json` is a `test` script. No `npm install` is needed.
+5. **Turn on the secure cookie (once HTTPS works).** Only after HTTPS through IIS works (Part 5), open `server\.env` in Notepad and add the line `COOKIE_SECURE=true`. Save the file. Without HTTPS, leave it out, or users cannot sign in. Never share this file. Note that step 4 (`4-configure.bat`) writes `server\.env` again and keeps the old copy as `server\.env.bak`; if you run it later, add the line `COOKIE_SECURE=true` again.
+6. **Start the app.** Double-click `setup\6-start-app.bat`. Check that `logs\server.log` ends with `KUN MH server running`, and that it does not show `Live-update connection failed`.
+7. **Check the screens.** Sign in as the Head of Accounts from another computer and check:
+   - **Admin > Data**: *Restore from backup* asks for `RESTORE`; *Reset to example data* asks for `RESET`, and both show a record count;
+   - a backup file (open it in Notepad and search for `email`): no staff e-mail addresses are in it, and near the end of the file there is a line `"backupNote"` saying that staff contact details are not included;
+   - **Admin > Access rights**: the page rights table shows the roles as agreed.
+   Then sign in as a user of each main role (GRN Officer, Maintenance Masool, Accounts) and check that their own pages show their records, and that a page they cannot edit refuses a save with the message above.
+8. **Check the phone layout (optional).** On a phone, open the Import page and one register. Nothing should scroll sideways; wide tables scroll inside their own box.
+
+**Rollback** (if the new version does not work)
+
+1. Stop the app (`setup\stop-app.bat`).
+2. Copy the files back from the backup folder (`C:\KUN\kun-mh-before-1.9.2`, or the folder you copied before this update), using the same `robocopy` command with the two folders swapped and without `/XF .env`. Remove `COOKIE_SECURE=true` from `server\.env` when it is rolled back.
+3. Start the app (`setup\6-start-app.bat`).
+
+**Local server checklist (1.9.2)**
+
+- [ ] Backup made (`setup\8-backup.bat`)
+- [ ] Access rights checked by the Head of Accounts for every role in use
+- [ ] Users told to save and log out
+- [ ] App stopped, new files copied with `robocopy`, `server\.env` kept
+- [ ] App started, and `logs\server.log` shows the server running
+- [ ] Screens checked (step 7), including a backup file with no staff e-mail
+- [ ] `COOKIE_SECURE=true` set, only if HTTPS works (step 5)
+
+---
+
+## Part 10 - Latest changes, the hosted site and the database modes
+
+This part covers the newest app files and the hosted site. It has three sections: **A** the office server, **B** the hosted site on Vercel, and **C** the move of the hosted database to relational tables. Sections A and B can be done without C.
+
+### A. Office server: copy the latest app files
+
+**What changes for the office server**
+
+| Area | Change |
+|---|---|
+| Goods receipt notes | A **No PO** receipt is refused when its value, at the master-price-list rates, is at or above the PO limit (500,000 IQD by default). The screen shows the reason. Below the limit it is accepted |
+| Bill entry | A bill is either **PO based** (choose the PO) or **No PO based** (choose a GRN that has no PO and is not yet billed). The vendor, the items and the budget line fill in from the GRN |
+| Calculation rules (`rules.js`) | The thresholds and the document-type rule are in one file, used by the page and by the tests |
+| Server code (`server\src`) | Access checks for documents, the data-mode switch (`DATA_MODE`) and the copy commands. With `DATA_MODE` not set, the office server works exactly as before |
+
+The database layout does not change in kv mode. Nothing needs migrating.
+
+**Steps**
+
+1. **Stop the app.** Double-click `setup\stop-app.bat`.
+2. **Back up.** Run `setup\8-backup.bat` and check that the new file in `C:\KUN\backups` is not empty.
+3. **Copy the new files.** Use the same command as Part 9, step 3. The `archive` folder is not needed on the server, so you can leave it out with `/XD node_modules logs iis archive`.
+4. **Check the settings file.** `server\.env` must not set `DATA_MODE=tables` unless the office server's database has been migrated. If the line is missing, the default (`kv`) applies.
+5. **Start the app.** Double-click `setup\6-start-app.bat`, then check that `logs\server.log` ends with `KUN MH server running`.
+6. **Check the screens.** Sign in from another computer and check:
+   - on **Goods receipt notes**, a **No PO** receipt of goods worth at or above the PO limit is refused with the message *at or above the PO limit*; one below the limit is accepted;
+   - on **Bills**, a new bill offers *PO based bill entry* and *No PO based bill entry*; choosing the second shows the GRNs that have no PO and are not yet billed, and choosing one fills in the vendor, the items and the budget line.
+
+**Rollback:** as in Part 9 (copy the files back from the folder you made before step 3, and start the app).
+
+### B. Hosted site (Vercel)
+
+The hosted site is this folder deployed to Vercel. `api\index.js` runs the same Express app as the office server, against a Neon PostgreSQL database. Vercel shows the site over HTTPS.
+
+**Deploy**
+
+- Production: from this folder, `vercel --prod --yes`.
+- Preview (for testing a change first): `vercel --yes`. Preview deployments are protected by Vercel Deployment Protection.
+- Check the deployment: the command prints the URL and *ready*. Open it, log in, and check one list.
+
+**Environment settings** (set in the Vercel project, in the dashboard or with `vercel env`). Never write a value into the repository, a README or an e-mail:
+
+| Name | Production | Preview | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | the production Neon database | a separate test database | Connection string (secret) |
+| `DB_SSL` | `require` | `require` | TLS for Neon |
+| `COOKIE_SECURE` | `true` | `true` | Session cookie only over HTTPS |
+| `DATA_MODE` | `tables` after the cutover in C (`kv` before) | the same as production, or `kv` for a test | Which data layout the app uses |
+
+Keep the preview `DATABASE_URL` pointing at a database that is not production.
+
+**Roll back a bad release:** `vercel rollback` (or the previous deployment in the Vercel dashboard). This restores the code only, not the data.
+
+### C. Moving the hosted database to tables (cutover)
+
+The hosted database can run in `kv` mode (documents in `kv_docs`, the original layout) or `tables` mode (relational tables). The office server stays in `kv` mode unless its `server\.env` sets `DATA_MODE=tables`. Tables mode is switched on for the hosted site only once the steps below are done. Run every command in the `server` folder, in PowerShell, with the production URL set only in your own session. Do not paste it into chat, a file or a ticket.
+
+**Before the cutover**
+
+1. **Restore point.** In the Neon console, create a branch of the production database, named for the date. Or run `pg_dump -Fc` against the production URL and keep the file somewhere safe.
+2. **Freeze writes.** Tell users to stop saving until you say so. Keep the freeze until step 6 is complete.
+
+**Cutover**
+
+3. **Dry run against production** (nothing is written):
+   ```powershell
+   $env:DATABASE_URL = "<PRODUCTION DATABASE URL>"
+   $env:DB_SSL = "require"
+   node src/migrate-to-tables.js --report cutover-dry-run.json
+   ```
+   Check that the `Target:` line shows the production host and database, and that the status is `dry run passed`. Stop if it does not.
+4. **Apply.** Use the target name printed in step 3:
+   ```powershell
+   node src/migrate-to-tables.js --apply --confirm-target <HOST/DB> --report cutover-apply.json
+   ```
+   The status must be `applied and committed`. If it says `FAILED, rolled back`, nothing changed; do not go on.
+5. **Check the record.** The `migration_runs` table has a new row with `mode = apply` and `status = applied`.
+6. **Switch the app.** In Vercel, set `DATA_MODE=tables` for Production, then run `vercel --prod --yes` from this folder.
+7. **Check, then end the freeze.** Log in, open a purchase order list and the job card register, and compare a few numbers with what users saw before. Then tell users they can save again.
+
+**Rollback**
+
+- **Before step 6:** users are still on the old layout. Fix the problem and run the dry run again.
+- **After step 6:** set `DATA_MODE=kv` for Production and redeploy. Records saved while the site ran in tables mode are not in `kv_docs`, so first copy the tables back with `node src/migrate-tables-to-kv.js` (dry run), and then with `--apply --confirm-target <HOST/DB>`. The copy keeps a backup of `kv_docs` in a table named `kv_docs_backup_<time>`.
+- **Last resort:** restore the restore point from step 1.
+
+**Warning.** The copy back to `kv_docs` (`migrate:kv`) has been dry-run tested against the preview database, but its apply step has not yet been rehearsed on a copy of the database. Rehearse it on a copy before you rely on it for a rollback.
+
+---
+
 ## Security checklist
 
 - [ ] Only IIS (ports 8080 and 8443) is reachable from the network. Ports 3100 and 5433 are closed to the network (`check-access.bat` confirms).
@@ -365,7 +532,9 @@ No data needs converting. The new access rights default to the existing page rig
 - [ ] The KUN MH database (port 5433, service `postgresql-kun-16`) is separate from the Billing database (port 5432). Its passwords are not shared with the Billing app.
 - [ ] `server\.env` is not shared, emailed or copied. It contains the database password.
 - [ ] Each person has their own account, and leavers are disabled promptly.
-- [ ] Backups are made weekly and kept on another drive or server.
+- [ ] Backups are made weekly and kept on another drive or server. Backup files hold the business records (not staff e-mail or phone numbers), but they are still private: keep them on a restricted share.
+- [ ] Access rights (**Admin > Access rights**) are reviewed by the Head of Accounts whenever a role changes, because they decide what each person can see and edit (Part 9).
+- [ ] `COOKIE_SECURE=true` is set in `server\.env` once HTTPS works (Part 9, step 5).
 - [ ] The server is patched by IT, and the folders `kun-mh\logs` and `C:\KUN\backups` are not shared.
 
 ---
@@ -391,3 +560,5 @@ No data needs converting. The new access rights default to the existing page rig
 - [ ] Step 8 made the first backup
 - [ ] The server was restarted once, and the app and database came back by themselves
 - [ ] Existing installation only: the upgrade checklist in Part 7 is complete
+- [ ] Version 2.2.0 checked: the screens listed in Part 10, section A, step 6 behave as described
+- [ ] `server\.env` does not set `DATA_MODE=tables` (unless the database was migrated, Part 10, section C)

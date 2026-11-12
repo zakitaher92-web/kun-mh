@@ -9,3 +9,8 @@ server/.env.bak
 
 # Log of the running server (written by setup step 6)
 logs/
+.vercel
+.env*
+
+# Archive: old docs, one-off scripts and run reports (not part of the app; may hold database hosts)
+archive/

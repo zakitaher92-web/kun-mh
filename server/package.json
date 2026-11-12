@@ -1,6 +1,6 @@
 {
   "name": "kun-mh-server",
-  "version": "1.0.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Local server and PostgreSQL storage for the KUN Maintenance & Housekeeping app",
   "main": "src/server.js",
@@ -8,13 +8,18 @@
     "node": ">=22.9.0"
   },
   "scripts": {
+    "test": "node --test",
     "start": "node --env-file-if-exists=.env src/server.js",
     "user": "node --env-file-if-exists=.env src/manage.js",
     "masters:export": "node --env-file-if-exists=.env src/export-masters.js",
     "masters:import": "node --env-file-if-exists=.env src/import-masters.js",
     "roles:fix-1.9": "node --env-file-if-exists=.env src/fix-roles-1.9.js",
     "vendors:english": "node --env-file-if-exists=.env src/rename-vendors.js",
-    "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js"
+    "budget:merge": "node --env-file-if-exists=.env src/merge-budget-codes.js",
+    "db:status": "node src/db-status.js",
+    "vendors:avl": "node --env-file-if-exists=.env src/approve-vendors.js",
+    "migrate:tables": "node --env-file-if-exists=.env src/migrate-to-tables.js",
+    "migrate:kv": "node --env-file-if-exists=.env src/migrate-tables-to-kv.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
