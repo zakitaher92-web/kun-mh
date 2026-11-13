@@ -42,21 +42,45 @@ if ($bin) {
     $problems++
 }
 
-$dbPort = if ($env:KUN_PG_PORT) { [int]$env:KUN_PG_PORT } else { Get-DbPort }
+# The shared PostgreSQL 18 cluster (service postgresql-x64-18, port 5432). KUN MH uses its own database in it.
+if ($bin -and $pgVersion -notmatch 'PostgreSQL\) 18\.') {
+    Write-Fail "PostgreSQL 18 is required. The installed programs are: $pgVersion"
+    $problems++
+}
+$dbPort = if ($env:KUN_PG_PORT) { [int]$env:KUN_PG_PORT } else { $DefaultPgPort }
 $service = Get-Service -Name $PgService -ErrorAction SilentlyContinue
-if ($service) {
+if (-not $service) {
+    Write-Fail "The PostgreSQL service $PgService was not found. Install PostgreSQL 18 with its default service name (INSTALLATION_GUIDE.md, Part 1b)."
+    $problems++
+} else {
     Write-Info "Windows service $($PgService): $($service.Status), startup type $($service.StartType)"
+    if ($service.Status -ne 'Running') {
+        Write-Fail "The service $PgService is not running. Start it in services.msc, then run this step again."
+        $problems++
+    }
     if ($service.StartType -ne 'Automatic') {
         Write-Warn "Set the $PgService service to Automatic in services.msc, so the database starts after a restart."
     }
-} else {
-    Write-Info "The KUN MH database service $PgService does not exist yet. Step 3 creates it."
 }
-try { Assert-NotReserved $dbPort 'The KUN MH database' } catch { Write-Fail $_.Exception.Message; $problems++ }
-if (Test-Port $dbPort) { Write-Ok "PostgreSQL is accepting connections on port $dbPort" }
-elseif ($service) {
-    Write-Fail "PostgreSQL is not running on port $dbPort. Start the $PgService service in services.msc, then run this step again."
+if (Test-Port $dbPort) { Write-Ok "PostgreSQL is accepting connections on 127.0.0.1:$dbPort" }
+else {
+    Write-Fail "Nothing answers on port $dbPort (127.0.0.1). Check the service $PgService, then run this step again."
     $problems++
+}
+
+# listen_addresses: read only (this step never changes postgresql.conf). It should be localhost.
+$serviceInfo = Get-CimInstance Win32_Service -Filter "Name='$PgService'" -ErrorAction SilentlyContinue
+$dataDir = $null
+if ($serviceInfo -and $serviceInfo.PathName -match '-D\s+"([^"]+)"') { $dataDir = $Matches[1] }
+elseif ($serviceInfo -and $serviceInfo.PathName -match '-D\s+(\S+)') { $dataDir = $Matches[1] }
+$confFile = if ($dataDir) { Join-Path $dataDir 'postgresql.conf' } else { $null }
+if ($confFile -and (Test-Path $confFile)) {
+    $listen = Get-Content $confFile | Where-Object { $_ -match '^\s*listen_addresses\s*=' } | Select-Object -First 1
+    $value = if ($listen) { (($listen -split '=', 2)[1]).Split('#')[0].Trim().Trim("'").Trim('"') } else { 'localhost (default)' }
+    if ($value -match '^(localhost|127\.0\.0\.1)$|default') { Write-Ok "listen_addresses = $value" }
+    else { Write-Warn "listen_addresses = '$value'. The shared cluster listens beyond localhost, which exposes it to the network. Ask the owner of the Billing application to set it to 'localhost'. This step does not change it." }
+} else {
+    Write-Info 'The data folder of the cluster could not be read; listen_addresses was not checked.'
 }
 
 # IIS and its two add-ons (IIS itself is installed by step 7)

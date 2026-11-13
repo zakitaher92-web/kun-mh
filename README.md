@@ -8,11 +8,11 @@ The same code runs in two places:
 
 | Deployment | Where | How it is installed or run | Guide |
 |---|---|---|---|
-| **Office server** (on-premises) | Windows Server 2016, IIS in front, PostgreSQL 16 on the same server | Set-up scripts in `setup\` | [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md) |
-| **Hosted** (staging) | Vercel (`api/index.js` runs the same Express app), Neon PostgreSQL | `vercel --prod` from this folder | [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md), Part 10 |
+| **Office server** (on-premises) | Windows Server 2016, IIS in front, PostgreSQL 18 (shared cluster) on the same server | Set-up scripts in `setup\` | [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md) |
+| **Hosted** (staging) | Vercel (`api/index.js` runs the same Express app), Neon PostgreSQL | `vercel --prod` from this folder | [HOSTED-VERCEL.md](HOSTED-VERCEL.md) |
 
 ```
-office browser  ->  IIS (8080 / 8443)  ->  Node.js app (127.0.0.1:3100)  ->  PostgreSQL (127.0.0.1:5433, database kun_mh)
+office browser  ->  IIS (8080 / 8443)  ->  Node.js app (127.0.0.1:3100)  ->  PostgreSQL 18 (127.0.0.1:5432, database kun_mh)
 
 browser         ->  Vercel function (api/index.js)                       ->  Neon PostgreSQL (DATABASE_URL)
 ```
@@ -29,10 +29,10 @@ browser         ->  Vercel function (api/index.js)                       ->  Neo
 | `vercel.json` | Vercel routes and the files the function includes | Hosted |
 | `package.json`, `package-lock.json` | Root packages for Vercel (Express, bcryptjs, pg) | Hosted |
 | `setup\` | Windows set-up scripts (`1-check-requirements.bat` to `8-backup.bat`), `check-access.bat`, `stop-app.bat`, and the helper scripts for the 1.9 upgrade | Office server |
-| `INSTALLATION_GUIDE.md` | Step-by-step installation and upgrade on Windows Server with IIS. Part 10 covers the latest changes and the hosted site | Office server (and hosted, Part 10) |
+| `INSTALLATION_GUIDE.md` | Step-by-step installation and upgrade on Windows Server with IIS. The hosted site is in HOSTED-VERCEL.md; upgrades are in UPGRADE-HISTORY.md | Office server (and hosted, Part 10) |
 | `server\` | The Node.js server: `src\` (the app and its commands), `client\server-adapter.js` (browser side), `schema.sql` and `schema-tables.sql` (database layout), `test\` (automatic tests), `testing\` (a local test server, not for the live system) | Both |
 | `server\README.md` | Technical reference: manual commands, environment settings, data modes, migrations | Both |
-| `server\upgrade-1.9.sql` | One-time data upgrade for installations made before 1.9 (Part 7 of the guide) | Office server (old installs) |
+| `server\upgrade-1.9.sql` | One-time data upgrade for installations made before 1.9 (UPGRADE-HISTORY.md, section 1) | Office server (old installs) |
 | `server\.env`, `.env.local` | **Local secrets** (database URL or password). Git-ignored; never committed or shared | Both |
 | `archive\` | Old documents, one-off scripts and run reports, kept for reference. Not used by the app. Git-ignored and excluded from Vercel | None |
 
@@ -122,12 +122,12 @@ Collection and document names are checked against a strict pattern; anything els
 
 ## Troubleshooting
 
-For the office server, the set-up scripts print a clear message for most problems. See [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md), Part 6. The most common ones:
+For the office server, the set-up scripts print a clear message for most problems. See [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md), Part 10. The most common ones:
 
 | Message or symptom | What to do |
 |---|---|
 | `Node.js is not installed` (step 1) | Install Node.js 22 LTS, open a new window, run step 1 again |
-| `PostgreSQL is not running on port 5433` (step 1) | Start the service `postgresql-kun-16` in services.msc |
+| `PostgreSQL is not running on port 5432` (step 1) | Start the service `postgresql-x64-18` in services.msc |
 | `password authentication failed for user "kunmh"` | The `DB_PASSWORD` in `server\.env` does not match user `kunmh`. Run step 4 again with the right password |
 | `Port 3100 is already in use` (step 6) | The app is probably running already. Run `setup\stop-app.bat`, then `6-start-app.bat` |
 | `IIS answered with status 502` (step 7) | The app is not running. Run `6-start-app.bat` |
@@ -139,7 +139,7 @@ For the office server, the set-up scripts print a clear message for most problem
 
 | Task | How |
 |---|---|
-| Start the app | `setup\6-start-app.bat` (database service `postgresql-kun-16` must be running). It also starts after a restart |
+| Start the app | `setup\6-start-app.bat` (the PostgreSQL service `postgresql-x64-18` must be running). It also starts after a restart |
 | Stop the app | `setup\stop-app.bat` |
 | Check the log | Open `logs\server.log` |
 | Add a person | `setup\5-create-admin.bat` |
@@ -154,8 +154,8 @@ For the office server, the set-up scripts print a clear message for most problem
 |---|---|---|
 | 8080 (8443 with HTTPS) | IIS, for office users | Office network only (firewall rule from step 7) |
 | 3100 | KUN MH Node app | This server only |
-| 5433 | KUN MH PostgreSQL | This server only |
-| 3000, 80, 443, 5432 | Billing application on the same server | Not used by KUN MH; the scripts refuse them |
+| 5432 | PostgreSQL 18, shared with the Billing app (KUN MH has its own database) | This server only |
+| 3000, 80, 443 | Billing application, and NKERP, on the same server | Not used by KUN MH; the scripts refuse them |
 
 ## Security notes
 

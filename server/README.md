@@ -1,12 +1,12 @@
 # KUN MH - server (technical reference)
 
-The Node.js server runs the app and keeps all records in PostgreSQL 16. It is used in two places:
+The Node.js server runs the app and keeps all records in PostgreSQL 18. It is used in two places:
 
-- **Office server (Windows):** the app runs behind IIS on port 3100, with its own database cluster on port 5433. For a normal installation use the scripts in the `setup` folder and [INSTALLATION_GUIDE.md](../INSTALLATION_GUIDE.md). This page explains what the scripts do, and how to run the same steps by hand.
-- **Hosted (Vercel + Neon):** `api/index.js` (the folder above) runs the same Express app as a serverless function, with `DATABASE_URL` pointing at Neon. See INSTALLATION_GUIDE.md, Part 10.
+- **Office server (Windows):** the app runs behind IIS on port 3100, with its own database cluster on port 5432. For a normal installation use the scripts in the `setup` folder and [INSTALLATION_GUIDE.md](../INSTALLATION_GUIDE.md). This page explains what the scripts do, and how to run the same steps by hand.
+- **Hosted (Vercel + Neon):** `api/index.js` (the folder above) runs the same Express app as a serverless function, with `DATABASE_URL` pointing at Neon. See HOSTED-VERCEL.md.
 
 ```
-office browser  ->  http://SERVER:8080 (IIS)  ->  http://127.0.0.1:3100 (Node.js, Express)  ->  PostgreSQL (database kun_mh, port 5433)
+office browser  ->  http://SERVER:8080 (IIS)  ->  http://127.0.0.1:3100 (Node.js, Express)  ->  PostgreSQL (database kun_mh, port 5432)
 ```
 
 Ports used by other applications on the office server and never used by KUN MH: 3000 (Billing app), 80 and 443 (Billing IIS site), 5432 (Billing PostgreSQL).
@@ -15,9 +15,9 @@ Ports used by other applications on the office server and never used by KUN MH: 
 
 | Script | Equivalent manual step |
 |---|---|
-| `setup\1-check-requirements.bat` | Checks Node.js 22.9+, the PostgreSQL programs, IIS URL Rewrite and ARR, and that ports 3100, 8080, 8443 and 5433 are free |
+| `setup\1-check-requirements.bat` | Checks Node.js 22.9+, the PostgreSQL programs, IIS URL Rewrite and ARR, and that ports 3100, 8080 and 8443 are free, and that PostgreSQL 18 answers on 5432 |
 | `setup\2-install-packages.bat` | `npm install` in this folder |
-| `setup\3-create-database.bat` | Creates the KUN MH cluster (service `postgresql-kun-16`, port 5433, data in `C:\KUN\pgdata-kun`) if it does not exist, then runs `src\create-database.js`: creates user `kunmh` and database `kun_mh` (safe to re-run) |
+| `setup\3-create-database.bat` | Creates the KUN MH cluster (service `postgresql-x64-18`, port 5432, data in `C:\KUN\shared cluster (no new data folder)`) if it does not exist, then runs `src\create-database.js`: creates user `kunmh` and database `kun_mh` (safe to re-run) |
 | `setup\4-configure.bat` | Writes `.env` and runs `npm run user -- list`, which connects and creates the tables |
 | `setup\5-create-admin.bat` | `npm run user -- add EMAIL "NAME" "PASSWORD"` |
 | `setup\6-start-app.bat` | Registers the scheduled task `KUN-MH Server`, which runs `setup\run-server.cmd` (`npm start`, output to `logs\server.log`) at startup and restarts it if it stops |
@@ -35,7 +35,7 @@ Copy `.env.example` to `.env` and fill in the values. The file is git-ignored. N
 | Setting | Meaning | Default |
 |---|---|---|
 | `PORT`, `HOST` | Port and address the app listens on. Keep `HOST=127.0.0.1` | 3100, 127.0.0.1 |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | The database connection (office server) | 127.0.0.1, 5433, kun_mh, kunmh |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | The database connection (office server) | 127.0.0.1, 5432, kun_mh, kunmh |
 | `DATABASE_URL` | Full connection string. Takes precedence over the `DB_*` values (Vercel and Neon) | none |
 | `DB_SSL` | `require` turns on TLS (Neon needs it) | off |
 | `DB_POOL_MAX` | Connections per server process | 10 |
@@ -67,7 +67,7 @@ npm run migrate:kv -- --apply --confirm-target HOST/DB      rem tables -> kv_doc
 - `migrate:tables` empties the tables and loads them again from `kv_docs`. `kv_docs` is only read.
 - `migrate:kv` writes `kv_docs` in full. Before it replaces the rows it copies them to a backup table named `kv_docs_backup_<time>`, and records that name in `migration_runs`.
 - Both commands record each applied run in `migration_runs`, and accept `--report <file>` to keep the full report.
-- Locks: `migrate:kv` takes shared locks on the tables for the length of the run, so a save cannot land in them and be missed. Stop writes anyway while a cutover is running (INSTALLATION_GUIDE.md, Part 10).
+- Locks: `migrate:kv` takes shared locks on the tables for the length of the run, so a save cannot land in them and be missed. Stop writes anyway while a cutover is running (HOSTED-VERCEL.md, section C).
 
 To check the two modes against each other: `node testing/parity-tables.js` (with the database URL set) compares every collection, and rolls back its own test write.
 
@@ -93,7 +93,7 @@ npm run user -- enable EMAIL
 
 ## Database user and database, by hand
 
-Created by hand (for example in psql as the `postgres` user of the KUN MH cluster, port 5433):
+Created by hand (for example in psql as the `postgres` user of the KUN MH cluster, port 5432):
 
 ```sql
 CREATE USER kunmh WITH PASSWORD 'your-kunmh-password';
@@ -104,12 +104,12 @@ GRANT ALL ON SCHEMA public TO kunmh;
 
 ## Looking at the data
 
-Any of these tools works (all connect to `127.0.0.1`, port `5433`, database `kun_mh`, user `kunmh`):
+Any of these tools works (all connect to `127.0.0.1`, port `5432`, database `kun_mh`, user `kunmh`):
 
 - **pgAdmin 4**, installed with PostgreSQL.
 - **psql**, from the PostgreSQL *Command Line Tools*:
   ```bat
-  "C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh
+  "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh
   ```
   Useful queries:
   ```sql
@@ -123,7 +123,7 @@ Editing rows directly changes what the app sees. Back up first. Never connect to
 
 ## Reset for a clean test
 
-Stop the app first (`setup\stop-app.bat`). Then, as the `postgres` user of the KUN MH cluster (port 5433):
+Stop the app first (`setup\stop-app.bat`). Then, as the `postgres` user of the KUN MH cluster (port 5432):
 
 ```sql
 DROP DATABASE IF EXISTS kun_mh WITH (FORCE);
@@ -137,27 +137,16 @@ Delete `server\.env` and run the setup scripts again from step 3.
 `setup\8-backup.bat` writes `kun_mh_YYYY-MM-DD_HHMM.sql` into `C:\KUN\backups`. The same thing by hand:
 
 ```bat
-"C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -f kun_mh_backup.sql
+"C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh -f kun_mh_backup.sql
 ```
 
 Restore into an empty `kun_mh` database:
 
 ```bat
-"C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -f kun_mh_backup.sql
+"C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh -f kun_mh_backup.sql
 ```
 
 Take a backup before any migration. `migrate:tables` does not change `kv_docs`. `migrate:kv` keeps a copy of `kv_docs` in a backup table (`kv_docs_backup_*`), as described above, but that is not a substitute for a full backup.
-
-## Alternative: portable PostgreSQL (no installer)
-
-Use this only when the official installer cannot be used. This is an unofficial PostgreSQL 16.15 build packaged for npm; it was tested for this app. It does not replace the cluster that step 3 creates, and it must not use port 5432.
-
-1. In a folder such as `C:\pgsql`, run `npm install @embedded-postgres/windows-x64@16.15.0-beta.19`.
-2. Set `PGBIN` to `...\node_modules\@embedded-postgres\windows-x64\native\bin` in that folder.
-3. Create the data folder with `initdb.exe -D C:\pgdata -U postgres --pwfile=...` (write the superuser password to a temporary file and delete it afterwards; run it as a user that is not an administrator), then start it with `pg_ctl.exe -D C:\pgdata -l C:\pgsql\server.log -o "-p 5433" start`.
-4. Stop it with `pg_ctl.exe -D C:\pgdata stop`.
-
-The portable build has no `psql` and no `pg_dump`, so use the app's own backup, or install the PostgreSQL 16 Command Line Tools.
 
 ## Files
 
@@ -180,7 +169,7 @@ The portable build has no `psql` and no `pg_dump`, so use the app's own backup, 
 | `client\server-adapter.js` | Browser side: sends the app's data requests to this server |
 | `schema.sql` | Tables used by every mode: `accounts`, `sessions`, `kv_docs` |
 | `schema-tables.sql` | Tables for tables mode, including `migration_runs` (applied by `migrate:tables`) |
-| `upgrade-1.9.sql` | One-time data upgrade for installations made before 1.9 (guide, Part 7) |
+| `upgrade-1.9.sql` | One-time data upgrade for installations made before 1.9 (UPGRADE-HISTORY.md, section 1) |
 | `vendor-names-en.json` | The English vendor names used by `vendors:english` |
 | `test\` | The automatic tests (`npm test`) |
 | `testing\` | A local test server (`dev-server.js`), a fake database pool for the tests (`fake-pool.js`), and the parity check (`parity-tables.js`). Not for the live system |
@@ -189,6 +178,6 @@ The portable build has no `psql` and no `pg_dump`, so use the app's own backup, 
 ## Security notes
 
 - The app listens on `127.0.0.1` (this server only). Keep it that way: on the office server, IIS sits in front (`setup\7-setup-iis.bat`), which applies the network restriction and HTTPS. `HOST=0.0.0.0` would expose the app without IIS and is not supported.
-- The KUN MH database listens on `localhost` only (port 5433). `setup\check-access.bat` confirms that it does not answer from the network.
+- The KUN MH database listens on `localhost` only (port 5432). `setup\check-access.bat` confirms that it does not answer from the network.
 - Access to documents is checked by the server against each role's rights. Routes that need only a signed-in user are open to every signed-in person (see the README, Security notes).
 - `.env` contains database credentials. It is listed in `.gitignore`; do not copy it elsewhere.

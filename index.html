@@ -485,8 +485,11 @@ const fmtQ = v => (v === null || v === undefined || v === '') ? '' : Number(v).t
 const pct = (v, d = 0) => (v === null || v === undefined || isNaN(v)) ? '' : (v * 100).toFixed(d) + '%';
 const pad4 = n => String(n).padStart(4, '0');
 const futureDate = d => !!d && d > isoDate(new Date());
-const isoDate = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
-const isoDT = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); };
+// Business dates and "today" are in Baghdad time, whatever the time zone of the computer (version 2.2.0).
+const BIZ_TZ = 'Asia/Baghdad';
+const bizParts = d => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: BIZ_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(p => [p.type, p.value]));
+const isoDate = d => { const p = bizParts(d); return `${p.year}-${p.month}-${p.day}`; };
+const isoDT = d => { const p = bizParts(d); return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`; };
 const nowDT = () => isoDT(new Date());
 function fdate(s) { if (!s) return ''; const [y, m, d] = s.slice(0, 10).split('-'); return `${d}-${MON[+m - 1]}-${y}`; }
 function fdt(s) { if (!s) return ''; return fdate(s) + (s.length > 10 ? ' ' + s.slice(11, 16) : ''); }

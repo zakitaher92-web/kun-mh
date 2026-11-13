@@ -35,7 +35,13 @@ try {
     # Ports on the network address: the app and the database must NOT answer; IIS must answer
     if ($lan) {
         Check (-not (Test-TcpPort $lan $appPort)) "App port $appPort is closed to the network" "App port $appPort answers on $lan. It must be private: check HOST=127.0.0.1 in server\.env."
-        Check (-not (Test-TcpPort $lan $dbPort)) "Database port $dbPort is closed to the network" "Database port $dbPort answers on $lan. Check the listen_addresses setting of the KUN MH database (localhost only)."
+        # The database port is shared with the Billing app (PostgreSQL 18 cluster). A test from this server cannot show
+        # whether the firewall blocks it from other computers, so a warning is shown, not a failure.
+        if (Test-TcpPort $lan $dbPort) {
+            Write-Warn "Database port $dbPort answers on this server's network address $lan. It is the shared PostgreSQL cluster (also used by the Billing app). Check that the firewall blocks port $dbPort from the network, and that listen_addresses is localhost (step 1 shows its value)."
+        } else {
+            Write-Ok "Database port $dbPort does not answer on $lan"
+        }
         foreach ($p in @($httpPort, $httpsPort) | Where-Object { $_ }) {
             Check (Test-TcpPort $lan $p) "Port $p is open to the network (IIS)" "Port $p does not answer on $lan. Check the firewall rule 'KUN-MH IIS port $p' and the network profile."
         }

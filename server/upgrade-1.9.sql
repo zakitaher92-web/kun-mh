@@ -1,12 +1,12 @@
 -- KUN Maintenance & Housekeeping - data upgrade to version 1.9 (for an installation made from the earlier package).
 --
--- Run this ONCE on the existing database `kun_mh` after the new index.html is in place (INSTALLATION_GUIDE.md, Part 7).
+-- Run this ONCE on the existing database `kun_mh` after the new index.html is in place (see UPGRADE-HISTORY.md, section 1).
 -- It is safe to run again: every change only adds a missing key or removes the Urgent priority.
 -- It changes NO transactions (POs, GRNs, bills, job cards, ...). It does not change the table layout (schema.sql is unchanged).
 -- Config documents keep their values under the key "v" (cfg/settings, cfg/lists, ...), which is why the queries use data->'v'.
 --
 -- How to run (in a Command Prompt, from the server folder; the user is kunmh):
---   "C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -f upgrade-1.9.sql
+--   "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh -f upgrade-1.9.sql
 -- Take a backup first (setup\8-backup.bat) and stop the app first (setup\stop-app.bat).
 
 BEGIN;

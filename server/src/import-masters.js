@@ -1,5 +1,5 @@
 'use strict';
-// Loads the master data written by export-masters.js into THIS database (INSTALLATION_GUIDE.md, Part 7).
+// Loads the master data written by export-masters.js into THIS database (see INSTALLATION_GUIDE.md, Part 6).
 // Usage (in the server folder, with the app stopped):
 //   npm run masters:import -- ..\dist\KUN-MH-masters-1.9.json --dry-run    (shows what would change, changes nothing)
 //   npm run masters:import -- ..\dist\KUN-MH-masters-1.9.json              (applies the change, in one transaction)
@@ -75,7 +75,7 @@ async function main() {
       console.log('Dry run finished. Nothing was saved. Run again without --dry-run to apply.');
     } else {
       await client.query('COMMIT');
-      console.log('Master data saved. Check the screens in the app (INSTALLATION_GUIDE.md, Part 7, step 6).');
+      console.log('Master data saved. Check the screens in the app (see UPGRADE-HISTORY.md, section 1, step 7).');
     }
   } catch (e) {
     await client.query('ROLLBACK').catch(() => { });
