@@ -15,11 +15,11 @@ $SiteName = 'KUN-MH'                              # IIS website that users open 
 $DefaultAppPort   = 3100    # the KUN Node app, private to this server (127.0.0.1)
 $DefaultHttpPort  = 8080    # IIS, office users (HTTP, redirects to HTTPS when a certificate is used)
 $DefaultHttpsPort = 8443    # IIS, office users (HTTPS)
-$DefaultPgPort    = 5433    # KUN MH's own PostgreSQL cluster (private to this server)
-$PgService        = 'postgresql-kun-16'   # Windows service of that cluster (see INSTALLATION_GUIDE.md, Part 1b)
+$DefaultPgPort    = 5434    # KUN MH's own PostgreSQL 18 cluster (private to this server)
+$PgService        = 'postgresql-kun-18'   # Windows service of that cluster (see INSTALLATION_GUIDE.md, Part 1b)
 $ReservedPorts    = @(80, 443, 3000, 5432)   # never used by KUN MH
 
-$PgDataDir        = 'C:\KUN\pgdata-kun'    # data folder of the KUN MH PostgreSQL cluster
+$PgDataDir        = 'C:\KUN\pgdata-kun18'    # data folder of the KUN MH PostgreSQL 18 cluster
 $PgOwnerUser      = 'kunpg'                # Windows account that runs the KUN MH PostgreSQL service
 $IisAppPool       = 'KUN-MH'               # IIS application pool of the KUN MH website (no .NET)
 
@@ -85,7 +85,7 @@ function Get-PgBin {
         ForEach-Object { Join-Path $_.FullName 'bin' }
     $candidates = @(
         $env:KUN_PG_BIN,
-        'C:\Program Files\PostgreSQL\16\bin'
+        'C:\Program Files\PostgreSQL\18\bin'
     ) + @($installed) + @(
         'C:\pgsql\node_modules\@embedded-postgres\windows-x64\native\bin',
         (Join-Path $env:USERPROFILE 'pgsql-local\node_modules\@embedded-postgres\windows-x64\native\bin')

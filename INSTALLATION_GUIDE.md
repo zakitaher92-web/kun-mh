@@ -2,12 +2,12 @@
 
 This guide is for **version 2.2.0** of the app (the package folder that contains `setup\`, `server\` and `index.html`).
 
-The app runs on one Windows Server. Its records are stored in a PostgreSQL 16 database on the same server. **IIS** (the web server built into Windows) receives the requests from other computers on the office network and passes them to the app. Other people open the app in their browser; they do not install anything.
+The app runs on one Windows Server. Its records are stored in a PostgreSQL 18 database on the same server. **IIS** (the web server built into Windows) receives the requests from other computers on the office network and passes them to the app. Other people open the app in their browser; they do not install anything.
 
 ```
 Other computers' browsers  ->  IIS on the server (port 8080, or 8443 with HTTPS)
                                   ->  KUN app on the server (127.0.0.1:3100, private)
-                                        ->  KUN MH PostgreSQL on the server (port 5433, private)
+                                        ->  KUN MH PostgreSQL 18 on the server (port 5434, private)
 ```
 
 **Ports used by KUN MH**
@@ -17,19 +17,19 @@ Other computers' browsers  ->  IIS on the server (port 8080, or 8443 with HTTPS)
 | IIS, HTTP (office users) | **8080** | Office network (firewall rule from step 7) | Step 7 (Enter takes 8080) |
 | IIS, HTTPS (office users) | **8443** | Office network (firewall rule from step 7) | Step 7 (asked only with a certificate) |
 | KUN app (Node) | **3100** | This server only (127.0.0.1). IIS forwards to it | `PORT` in `server\.env` (step 4) |
-| KUN MH PostgreSQL (service `postgresql-kun-16`) | **5433** | This server only | Step 3 creates the cluster; `DB_PORT` in `server\.env` (step 4) |
+| KUN MH PostgreSQL 18 (service `postgresql-kun-18`) | **5434** | This server only | Step 3 creates the cluster; `DB_PORT` in `server\.env` (step 4) |
 
 **Do not use these ports for KUN MH.** They are used by other applications on this server: **3000** (Billing app), **80** and **443** (Billing IIS site), **5432** (Billing PostgreSQL). The scripts refuse them.
 
-The Billing app's PostgreSQL (service `postgresql-x64-16`, port 5432) is not changed by any KUN MH step.
+The Billing app's PostgreSQL (service `postgresql-x64-18`, port 5432) is not changed by any KUN MH step.
 
-Set-up takes about one hour the first time. Node.js and the PostgreSQL programs are already installed on the server, so you start at Part 1.
+Set-up takes about one hour on a new server. Part 1 checks the programs and installs what is missing: Node.js 22 LTS, PostgreSQL 18 with the Command Line Tools, and the two IIS add-ons. A server that already runs KUN MH on PostgreSQL 16 is not covered by these fresh-install steps. Move its data with the server's own migration record (kept with the installation records, not in this repository) before following this guide.
 
 **Which part to follow**
 
 | You want to | Go to |
 |---|---|
-| Install a new office server | Parts 1 to 6, then Part 9 (access rights and the current version) |
+| Install a new office server (fresh set-up, PostgreSQL 18) | Parts 1 to 6, then Part 9 (access rights and the current version) |
 | Update an office server that runs version 1.9.x or 1.9.2 | Part 10, section A (the latest app files); Part 9 for the 1.9.2 checks |
 | Upgrade a server that is still on a version before 1.9 | Part 7, then Part 8 |
 | Update or check the hosted site (Vercel), or move its database to tables | Part 10, sections B and C |
@@ -49,10 +49,10 @@ Set-up takes about one hour the first time. Node.js and the PostgreSQL programs 
 2. If it does not, install the **22 LTS** version from https://nodejs.org (default options), then open a new Command Prompt.
 
 ### 1b. PostgreSQL programs (already installed: check only)
-1. The folder `C:\Program Files\PostgreSQL\16\bin` must exist. It comes with the PostgreSQL 16 installation used by the Billing app, with the **Command Line Tools** option. If it is missing, install PostgreSQL 16 with that option (this does not affect the Billing database).
-2. Do **not** change the Billing app's service `postgresql-x64-16` or its port 5432.
+1. The folder `C:\Program Files\PostgreSQL\18\bin` must exist. Install **PostgreSQL 18** with the **Command Line Tools** option, from https://www.postgresql.org/download/windows/. This installation is separate from the Billing app's PostgreSQL, so it does not change the Billing database.
+2. Do **not** change the Billing app's PostgreSQL service (`postgresql-x64-18` on the server) or its port 5432.
 
-The KUN MH database cluster is created by **step 3** of the scripts (service `postgresql-kun-16`, port 5433). You do not create it by hand.
+The KUN MH database cluster is created by **step 3** of the scripts (service `postgresql-kun-18`, port 5434, data in `C:\KUN\pgdata-kun18`). You do not create it by hand.
 
 ### 1c. URL Rewrite 2.1 (IIS add-on, install by hand)
 1. Go to **https://www.iis.net/downloads/microsoft/url-rewrite** and download the x64 installer.
@@ -86,7 +86,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 |---|---|---|
 | 1 | `1-check-requirements.bat` | Checks Node.js, the PostgreSQL programs, IIS URL Rewrite and ARR, and that the KUN MH ports are free. Fix anything marked **FAIL** before going on. |
 | 2 | `2-install-packages.bat` | Downloads the packages the server needs. One time only. |
-| 3 | `3-create-database.bat` | Creates the KUN MH database cluster (service `postgresql-kun-16`, port 5433, data in `C:\KUN\pgdata-kun`) if it does not exist, then the database `kun_mh` and the user `kunmh`. |
+| 3 | `3-create-database.bat` | Creates the KUN MH database cluster (service `postgresql-kun-18`, port 5434, data in `C:\KUN\pgdata-kun18`) if it does not exist, then the database `kun_mh` and the user `kunmh`. |
 | 4 | `4-configure.bat` | Saves the settings file `server\.env` (ports, database password) and tests the connection. |
 | 5 | `5-create-admin.bat` | Creates the log-in accounts for the people who will use the app. Repeat for each person. |
 | 6 | `6-start-app.bat` | Runs the app in the background as a Windows scheduled task. It starts with the server and restarts itself if it stops. |
@@ -120,7 +120,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 | Restart the app | Run `stop-app.bat`, then `6-start-app.bat` |
 | Check access | Double-click `setup\check-access.bat` |
 | Check the app's log | Open `kun-mh\logs\server.log` in Notepad. The newest lines are at the bottom. |
-| Start or stop the KUN MH database | **services.msc** > **postgresql-kun-16** (not the Billing service **postgresql-x64-16**) |
+| Start or stop the KUN MH database | **services.msc** > **postgresql-kun-18** (not the Billing service **postgresql-x64-18**) |
 | Back up | Double-click `setup\8-backup.bat` (weekly). The backup is saved in `C:\KUN\backups` |
 | Restore a backup | In the app: **Admin > Data > Restore from backup**. Type `RESTORE` to confirm; the dialog shows how many records it replaces |
 | Reset to example data | In the app: **Admin > Data > Reset to example data**. Type `RESET` to confirm; the dialog shows how many records it replaces. Do not use on the live system |
@@ -151,7 +151,7 @@ Tell the users the address, for example `http://kun-mh:8080/` or `http://10.10.1
 - Check the Windows Firewall rules **KUN-MH IIS port 8080** (and 8443) in *Windows Firewall with Advanced Security*.
 - Check that the server's network profile is *Private* or *Domain* if the firewall rules do not seem to apply.
 
-**What must stay closed.** Only IIS (8080 and 8443) is reachable from the network. Ports **3100** (the app) and **5433** (the database) must not answer from other computers. `check-access.bat` tests this.
+**What must stay closed.** Only IIS (8080 and 8443) is reachable from the network. Ports **3100** (the app) and **5434** (the database) must not answer from other computers. `check-access.bat` tests this.
 
 ---
 
@@ -176,15 +176,15 @@ If you use a self-signed certificate, each browser shows a warning until the cer
 |---|---|
 | `Node.js is not installed` (step 1) or `too old` | Install Node.js 22 LTS (Part 1a), open a new window, run step 1 again |
 | `URL Rewrite is not installed` / `Application Request Routing is not installed` (step 1 or 7) | Install them as in Part 1c and 1d, then run step 1 or 7 again |
-| `The PostgreSQL 16 programs were not found` (step 3) | Install PostgreSQL 16 with the Command Line Tools (Part 1b) |
-| `Port 5433 is used by another database` (step 3) | Another program uses 5433. Choose another free port with `KUN_PG_PORT` and never 5432 |
-| `The service postgresql-kun-16 did not start` (step 3) | Grant the account `COMPUTERNAME\kunpg` the right *Log on as a service* in `secpol.msc`, then run step 3 again |
+| `The PostgreSQL 18 programs were not found` (step 3) | Install PostgreSQL 18 with the Command Line Tools (Part 1b) |
+| `Port 5434 is used by another database` (step 3) | Another program uses 5434. Choose another free port with `KUN_PG_PORT` and never 5432 |
+| `The service postgresql-kun-18 did not start` (step 3) | Grant the account `COMPUTERNAME\kunpg` the right *Log on as a service* in `secpol.msc`, then run step 3 again |
 | `The database files could not be created` (step 3) | Delete the folder `C:\KUN\pgdata-kun` and run step 3 again |
-| `PostgreSQL is not running on port 5433` (step 1, 3 or 4) | Start the service **postgresql-kun-16** in services.msc |
+| `PostgreSQL is not running on port 5434` (step 1, 3 or 4) | Start the service **postgresql-kun-18** in services.msc |
 | `could not connect` / `password authentication failed for user "kunmh"` | The `DB_PASSWORD` in `server\.env` does not match user `kunmh`. Run step 4 again with the right password |
 | `database "kun_mh" does not exist` | Run step 3 |
-| `The KUN MH database cannot use port 5432` (step 1, 3 or 4) | 5432 is the Billing app's database. Use 5433 |
-| `The app port and the PostgreSQL port must be different` (step 4) | Choose different ports for the app (3100) and the database (5433) |
+| `The KUN MH database cannot use port 5432` (step 1, 3 or 4) | 5432 is the Billing app's database. Use 5434 |
+| `The app port and the PostgreSQL port must be different` (step 4) | Choose different ports for the app (3100) and the database (5434) |
 | `Port 8080 is already in use by another program` (step 7) | Choose another port in step 7 (not 80, 443, 3000 or 5432) |
 | `Port 8080 is in use by the IIS website 'Default Web Site'` (step 7) | Answer *y* to stop that website, or choose another port |
 | `The app did not start yet` (step 6) | Read the log lines shown. The usual cause is that the database service is stopped, or the `kunmh` password in `server\.env` is wrong |
@@ -193,17 +193,17 @@ If you use a self-signed certificate, each browser shows a warning until the cer
 | `No certificate with thumbprint` (step 7) | Check the thumbprint and that the certificate is in Local Computer > Personal |
 | Users see *Loading the shared data* | Reload the page. Check `logs\server.log` for an error |
 | Users see *502 Bad Gateway* or an IIS error page | The app is stopped. Run `6-start-app.bat` |
-| `pg_dump.exe was not found` (step 8) | Install PostgreSQL 16 with the Command Line Tools, or back up from the app: **Admin > Data > Download backup** |
+| `pg_dump.exe was not found` (step 8) | Install PostgreSQL 18 with the Command Line Tools, or back up from the app: **Admin > Data > Download backup** |
 | *Wrong email or password* in the app | Check the spelling. An administrator can reset the password with the command in Part 3 |
 
 | `psql.exe was not found` (Part 7, step 4) | Install PostgreSQL 16 with the Command Line Tools (Part 1b), then run Part 7, step 4 again |
 | *Your role may not change this page* (a save is refused) | The person's role cannot edit that page. Check **Admin > Access rights**; the Head of Accounts can change it (Part 9) |
 | A page shows no records, or *Nothing here yet* where records are expected | The role cannot see the pages that use those records (Part 9). Check **Admin > Access rights** |
-| `Live-update connection lost, reconnecting` in `logs\server.log` | The app keeps retrying the database connection by itself. If it stays, check that PostgreSQL is running (service `postgresql-kun-16`) and restart the app |
+| `Live-update connection lost, reconnecting` in `logs\server.log` | The app keeps retrying the database connection by itself. If it stays, check that PostgreSQL is running (service `postgresql-kun-18`) and restart the app |
 | `Type RESET exactly to confirm` / `Type RESTORE exactly to confirm` | The confirmation word was not typed exactly (capitals). Nothing was reset or restored |
 | `The app is in a user profile folder` (step 7) | IIS cannot read the app there. Move the folder to `C:\KUN\kun-mh` (Part 7, step 1c), then run `6-start-app.bat` and `7-setup-iis.bat` from the new folder |
 | Settings show blank job targets, or the job-card priority list still shows *Urgent* | The data upgrade has not run. Run Part 7, step 4 |
-| `Could not connect to the database` during the data upgrade | Check that the service `postgresql-kun-16` is running and that the `kunmh` password is right |
+| `Could not connect to the database` during the data upgrade | Check that the service `postgresql-kun-18` is running and that the `kunmh` password is right |
 
 When you report a problem, send the text from the script window, the output of `check-access.bat`, and the last lines of `logs\server.log`.
 
@@ -526,10 +526,10 @@ The hosted database can run in `kv` mode (documents in `kv_docs`, the original l
 
 ## Security checklist
 
-- [ ] Only IIS (ports 8080 and 8443) is reachable from the network. Ports 3100 and 5433 are closed to the network (`check-access.bat` confirms).
+- [ ] Only IIS (ports 8080 and 8443) is reachable from the network. Ports 3100 and 5434 are closed to the network (`check-access.bat` confirms).
 - [ ] The firewall rules allow only the office network (step 7, first question), not *Any*.
 - [ ] HTTPS is in use (Part 5), with a certificate from the company certificate authority.
-- [ ] The KUN MH database (port 5433, service `postgresql-kun-16`) is separate from the Billing database (port 5432). Its passwords are not shared with the Billing app.
+- [ ] The KUN MH database (port 5434, service `postgresql-kun-18`) is separate from the Billing database (port 5432, service `postgresql-x64-18`). Its passwords are not shared with the Billing app.
 - [ ] `server\.env` is not shared, emailed or copied. It contains the database password.
 - [ ] Each person has their own account, and leavers are disabled promptly.
 - [ ] Backups are made weekly and kept on another drive or server. Backup files hold the business records (not staff e-mail or phone numbers), but they are still private: keep them on a restricted share.

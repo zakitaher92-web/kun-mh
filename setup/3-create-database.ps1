@@ -76,10 +76,10 @@ try {
     Assert-NotReserved $dbPort 'The KUN MH database'
     $bin = Get-PgBin
     if (-not $bin -or -not (Test-Path (Join-Path $bin 'initdb.exe'))) {
-        throw 'The PostgreSQL 16 programs were not found (C:\Program Files\PostgreSQL\16\bin). Install PostgreSQL 16 with the Command Line Tools first.'
+        throw 'The PostgreSQL 18 programs were not found (C:\Program Files\PostgreSQL\18\bin). Install PostgreSQL 18 with the Command Line Tools first.'
     }
 
-    # 1. The KUN MH cluster: create it if needed (service postgresql-kun-16 on port 5433)
+    # 1. The KUN MH cluster: create it if needed (service postgresql-kun-18 on port 5434)
     $service = Get-Service -Name $PgService -ErrorAction SilentlyContinue
     $hasData = Test-Path (Join-Path $PgDataDir 'PG_VERSION')
     $superPw = $null

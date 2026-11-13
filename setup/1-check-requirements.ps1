@@ -38,7 +38,7 @@ if ($bin) {
     Write-Ok "PostgreSQL found: $pgVersion"
     Write-Info "folder: $bin"
 } else {
-    Write-Fail 'PostgreSQL 16 was not found. Install it as described in INSTALLATION_GUIDE.md, Part 1.'
+    Write-Fail 'PostgreSQL 18 was not found. Install it as described in INSTALLATION_GUIDE.md, Part 1.'
     $problems++
 }
 
