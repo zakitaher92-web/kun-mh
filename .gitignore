@@ -14,3 +14,7 @@ logs/
 
 # Archive: old docs, one-off scripts and run reports (not part of the app; may hold database hosts)
 archive/
+
+# The settings template is part of the repository (the rule above would hide it).
+!.env.example
+!server/.env.example

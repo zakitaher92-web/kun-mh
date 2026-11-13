@@ -10,18 +10,27 @@ $TaskName = 'KUN-MH Server'                       # scheduled task that runs the
 $SiteName = 'KUN-MH'                              # IIS website that users open (step 7)
 
 # Ports. These must not be the ports used by other applications on the server.
-# Ports already used on the server by other applications (do not use):
-#   3000 (Billing app), 80 and 443 (Billing IIS site), 5432 (Billing PostgreSQL).
+# Ports used on the server by other applications (KUN MH never uses them):
+#   3000 (Billing app), 80 and 443 (Billing IIS site), and the IIS site "Default Web Site" (NKERP).
 $DefaultAppPort   = 3100    # the KUN Node app, private to this server (127.0.0.1)
 $DefaultHttpPort  = 8080    # IIS, office users (HTTP, redirects to HTTPS when a certificate is used)
 $DefaultHttpsPort = 8443    # IIS, office users (HTTPS)
-$DefaultPgPort    = 5433    # KUN MH's own PostgreSQL cluster (private to this server)
-$PgService        = 'postgresql-kun-16'   # Windows service of that cluster (see INSTALLATION_GUIDE.md, Part 1b)
-$ReservedPorts    = @(80, 443, 3000, 5432)   # never used by KUN MH
+# The shared PostgreSQL 18 cluster (service postgresql-x64-18). KUN MH uses its own database and role in it.
+# The Billing app uses the same cluster. KUN MH never edits the cluster's configuration.
+$DefaultPgPort    = 5432
+$PgService        = 'postgresql-x64-18'
+$PgSuperUser      = 'postgres'        # superuser of the cluster (asked in step 3, never stored)
+$PgRole           = 'kunmh'           # login role of the app
+$PgDatabase       = 'kun_mh'          # database of the app
+$AppTimezone      = 'Asia/Baghdad'    # time zone for business dates (server, database and settings)
+$ReservedPorts    = @(80, 443, 3000)  # never used by KUN MH
 
-$PgDataDir        = 'C:\KUN\pgdata-kun'    # data folder of the KUN MH PostgreSQL cluster
-$PgOwnerUser      = 'kunpg'                # Windows account that runs the KUN MH PostgreSQL service
-$IisAppPool       = 'KUN-MH'               # IIS application pool of the KUN MH website (no .NET)
+$TaskAccount      = 'kunapp'          # local account (not an administrator) that runs the app and backup tasks; not SYSTEM
+$LogDir           = Join-Path $Root 'logs'
+$BackupTaskName   = 'KUN-MH Backup'   # nightly pg_dump (step 8, -Register)
+$BackupDir        = 'C:\KUN\backups'
+$BackupKeepDays   = 14                # nightly backups older than this are deleted
+$IisAppPool       = 'KUN-MH'          # IIS application pool of the KUN MH website (no .NET)
 
 # Returns a random password of letters and digits that has upper case, lower case and a digit.
 function New-RandomPassword([int]$Length = 24) {
@@ -85,7 +94,7 @@ function Get-PgBin {
         ForEach-Object { Join-Path $_.FullName 'bin' }
     $candidates = @(
         $env:KUN_PG_BIN,
-        'C:\Program Files\PostgreSQL\16\bin'
+        'C:\Program Files\PostgreSQL\18\bin'
     ) + @($installed) + @(
         'C:\pgsql\node_modules\@embedded-postgres\windows-x64\native\bin',
         (Join-Path $env:USERPROFILE 'pgsql-local\node_modules\@embedded-postgres\windows-x64\native\bin')
@@ -193,4 +202,51 @@ function Get-PgDump {
         ForEach-Object { Join-Path $_.FullName 'bin\pg_dump.exe' } |
         Where-Object { Test-Path $_ }
     return ($dumps | Select-Object -First 1)
+}
+
+# Creates the local task account if needed and sets a new random password. Returns the password.
+# The password is not stored anywhere by this script: Windows keeps it for the scheduled tasks.
+function Set-TaskAccount {
+    $pw = New-RandomPassword 24
+    $secure = ConvertTo-SecureString $pw -AsPlainText -Force
+    if (Get-LocalUser -Name $TaskAccount -ErrorAction SilentlyContinue) {
+        Set-LocalUser -Name $TaskAccount -Password $secure
+    } else {
+        New-LocalUser -Name $TaskAccount -Password $secure -PasswordNeverExpires -UserMayNotChangePassword `
+            -Description 'Runs the KUN MH app and backup tasks (not an administrator)' | Out-Null
+    }
+    return $pw
+}
+
+# Gives the task account what it needs: read the release, write the logs and the backups, nothing more.
+function Grant-TaskAccount {
+    New-Item -ItemType Directory -Force -Path $LogDir, $BackupDir | Out-Null
+    & icacls.exe $Root /grant "${TaskAccount}:(OI)(CI)RX" | Out-Null
+    & icacls.exe $LogDir /grant "${TaskAccount}:(OI)(CI)M" | Out-Null
+    & icacls.exe $BackupDir /grant "${TaskAccount}:(OI)(CI)M" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not set the permissions for $TaskAccount." }
+}
+
+# Registers the app task (starts with Windows, runs the app as the task account, not as SYSTEM).
+function Register-AppTask([string]$Password) {
+    $wrapper = Join-Path $SetupDir 'run-server.cmd'
+    $action    = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + $wrapper + '"') -WorkingDirectory $Server
+    $trigger   = New-ScheduledTaskTrigger -AtStartup
+    $trigger.Delay = 'PT60S'                 # give PostgreSQL time to start first
+    $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
+                    -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
+                    -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
+        -User "$env:COMPUTERNAME\$TaskAccount" -Password $Password -RunLevel Limited -Force | Out-Null
+}
+
+# Registers the nightly backup task (02:00 every day, as the task account, output to logs\backup.log).
+function Register-BackupTask([string]$Password) {
+    $backupScript = Join-Path $SetupDir '8-backup.ps1'
+    $log = Join-Path $LogDir 'backup.log'
+    $action    = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c powershell -NoProfile -ExecutionPolicy Bypass -File "' + $backupScript + '" -Scheduled >> "' + $log + '" 2>&1') -WorkingDirectory $Server
+    $trigger   = New-ScheduledTaskTrigger -Daily -At '02:00'
+    $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $BackupTaskName -Action $action -Trigger $trigger -Settings $settings `
+        -User "$env:COMPUTERNAME\$TaskAccount" -Password $Password -RunLevel Limited -Force | Out-Null
 }

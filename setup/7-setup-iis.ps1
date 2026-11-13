@@ -47,7 +47,7 @@ try {
     $allowedText = $allowed -join ', '
 
     $thumb = if ($env:KUN_CERT_THUMBPRINT) { $env:KUN_CERT_THUMBPRINT } else {
-        Read-Host 'Certificate thumbprint for HTTPS (Enter to skip; see INSTALLATION_GUIDE.md, Part 5)'
+        Read-Host 'Certificate thumbprint for HTTPS (Enter to skip; see INSTALLATION_GUIDE.md, Part 8)'
     }
     $thumb = ($thumb -replace '\s', '').ToUpper()
     $cert = $null
@@ -65,7 +65,7 @@ try {
             Write-Warn "The certificate does not list this server's name ($env:COMPUTERNAME or $fqdn). Browsers will show a name warning. Use a certificate that includes the name users type, or ask IT to add it."
         }
     } else {
-        Write-Warn 'HTTPS is skipped. Passwords and data would travel unencrypted on the network. Add a certificate as soon as possible (Part 5), then run this step again.'
+        Write-Warn 'HTTPS is skipped. Passwords and data would travel unencrypted on the network. Add a certificate as soon as possible (INSTALLATION_GUIDE.md, Part 8), then run this step again.'
     }
 
     $httpPort = if ($env:KUN_HTTP_PORT) { [int]$env:KUN_HTTP_PORT } else {
@@ -97,6 +97,10 @@ try {
             }
         }
         foreach ($site in ($others | Sort-Object -Property Name -Unique)) {
+            if ($site.Name -eq 'Default Web Site') {
+                # Hosts other applications on this server (NKERP). Never stopped by this step, whatever the answer.
+                throw "Port $p is used by 'Default Web Site', which hosts other applications (NKERP). This step never stops it. Choose another port (8080 and 8443 are the defaults)."
+            }
             Write-Warn "Port $p is used by the IIS website '$($site.Name)' (state: $($site.State))."
             $stop = if ($env:KUN_STOP_CONFLICTS) { $env:KUN_STOP_CONFLICTS } else {
                 Read-Host "Stop the website '$($site.Name)' so that $SiteName can use port $p? (y/N)"

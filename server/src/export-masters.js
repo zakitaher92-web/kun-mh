@@ -1,6 +1,6 @@
 'use strict';
 // Writes the master data of this database to one JSON file, so that it can be loaded into another copy
-// (see INSTALLATION_GUIDE.md, Part 7). Run it on the database that has the correct masters.
+// (see UPGRADE-HISTORY.md, section 1). Run it on the database that has the correct masters.
 // Usage (in the server folder):  npm run masters:export -- ..\dist\KUN-MH-masters-1.9.json
 //
 // Exported: price list (MPL), budget lines, categories, lists, access rights, settings, items, vendors and users.
