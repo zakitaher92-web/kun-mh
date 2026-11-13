@@ -40,6 +40,7 @@ Office browsers  ->  IIS on the server (8080, or 8443 with HTTPS)
 | Install by hand, with Node as an NSSM service and IIS as a reverse proxy | Parts 1, 2 and 4, then 5 to 10 |
 | Move the data from an existing PostgreSQL 16 database (service `postgresql-kun-16`, port 5433) | Part 12, first |
 | Update an installed server to version 2.2.0 | Part 11 |
+| Give the office server a copy of the hosted (Neon) database, running in tables mode | Part 13 |
 | Upgrade a server installed before 2.2.0 (1.9, 1.9.2) | [UPGRADE-HISTORY.md](UPGRADE-HISTORY.md) |
 | The hosted site on Vercel | [HOSTED-VERCEL.md](HOSTED-VERCEL.md) |
 
@@ -489,6 +490,88 @@ Use this once, on a server that still runs KUN MH on its own PostgreSQL 16 clust
 
 ---
 
+## Part 13 - Copy the hosted (Neon) database to the office server, tables mode
+
+Use this to give the office server a copy of the current hosted database (Neon, production) and run the office app on it in **tables mode**. The hosted site keeps running on Neon.
+
+**Read this first: two live copies.** After this part, the hosted site and the office server each have their own database. Records entered on one do **not** appear on the other, and nothing copies them back. This is by decision (both continue). Choose which copy people use for each kind of work, and write it down. A future copy from Neon would overwrite the office data (step 5 starts with a backup for that reason).
+
+**Do not use this part for the PostgreSQL 16 database** of the office server: that is Part 12. If the office server holds data that is not in Neon, decide first which copy keeps it.
+
+**Before you start**
+
+- Plan about two hours, outside working hours. Office users stop saving during steps 5 to 7. The hosted site is not affected.
+- You need the production database URL of Neon. Keep it in your own session only: never paste it into chat, a file, a ticket or the repository. Run every command below in PowerShell, in the `server` folder, with `$env:DATABASE_URL` set in that window only.
+- Use the PostgreSQL 18 programs (`C:\Program Files\PostgreSQL\18\bin`) for `pg_dump`, `pg_restore` and `psql`.
+- Check that the schema of the office database matches: the app applies `schema.sql` and `schema-tables.sql` itself, so this is handled by the app's start-up (step 6).
+
+1. **Freeze nothing on Neon.** The hosted site continues. Take the dump at a quiet time, and record the time of the dump in the change log: records entered after it will not be in the office copy.
+
+2. **Check the source.** In the Neon console, or with `psql`, check the server version and the table counts:
+   ```powershell
+   $env:DATABASE_URL = "<NEON PRODUCTION URL>"
+   & "C:\Program Files\PostgreSQL\18\bin\psql.exe" "$env:DATABASE_URL" -At -c "SHOW server_version;"
+   ```
+   The version must be 18 or older. Note the date and time in the change log.
+
+3. **Dump Neon** in the custom format (PostgreSQL 18 `pg_dump` reads the Neon server):
+   ```powershell
+   & "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" "$env:DATABASE_URL" -Fc --no-owner --no-privileges -f C:\KUN\backups\neon_prod_YYYY-MM-DD_HHMM.dump
+   Remove-Item Env:DATABASE_URL
+   ```
+   Check that the file is not empty, and copy it to a second drive.
+
+4. **Restore into a scratch database first**, and compare every table with Neon. The scratch database is `kun_mh_neon_check`, owned by the superuser, and is removed at the end.
+   ```powershell
+   $pg = "C:\Program Files\PostgreSQL\18\bin"
+   & "$pg\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE kun_mh_neon_check;"
+   & "$pg\pg_restore.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh_neon_check --no-owner --no-privileges -v C:\KUN\backups\neon_prod_YYYY-MM-DD_HHMM.dump
+   ```
+   Read the restore output. Then save the exact row count of every table, from the scratch copy and from Neon, with the same query (Part 12, step 3). The two files must be identical (`fc`). A difference means the copy is not complete: stop.
+
+   ```powershell
+   & "$pg\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh_neon_check -At -F "," -c "SELECT table_name, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint AS row_count FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;" > C:\KUN\backups\counts-scratch.csv
+   ```
+   Repeat the same query against Neon (with `$env:DATABASE_URL` set in your session, then removed), save it as `counts-neon.csv`, and run `fc C:\KUN\backups\counts-neon.csv C:\KUN\backups\counts-scratch.csv`. It must print **FC: no differences encountered**.
+
+   When the check passes, drop the scratch database: `DROP DATABASE kun_mh_neon_check;`
+
+5. **Back up the office database** (the safety copy for the rollback), and stop the app:
+   ```powershell
+   & "$pg\pg_dump.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh -Fc -f C:\KUN\backups\kun_mh_before_neon_YYYY-MM-DD_HHMM.dump
+   ```
+   Check the file is not empty. Then `setup\stop-app.bat`.
+
+6. **Replace the office data with the Neon copy.** `--clean --if-exists` drops the objects of the dump in `kun_mh` before they are restored:
+   ```powershell
+   & "$pg\pg_restore.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh --clean --if-exists --no-owner --no-privileges --role=kunmh -v C:\KUN\backups\neon_prod_YYYY-MM-DD_HHMM.dump
+   ```
+   The objects are created as the role `kunmh` (`--role`), which is what the app needs. Read the output. Then compare the counts of `kun_mh` with `counts-neon.csv`, the same way as step 4. They must match.
+
+7. **Point the office app at tables mode.** In `server\.env`:
+   ```
+   DATA_MODE=tables
+   ```
+   Keep the other settings (DB_PORT=5432, TZ, COOKIE_SECURE). Then start the app with `setup\6-start-app.bat`, and check that the log shows `KUN MH server running ... (data: tables)`.
+
+8. **Check the screens** from another computer: log in with a Neon account (the accounts of the copy are the Neon accounts, with their passwords); open a purchase order list, the job card register, the bills and the audit log; compare a few numbers with the hosted site. Run `setup\check-events.bat` against the office address.
+
+9. **Tell users which copy to use**, and that log-ins are now the hosted site's accounts. Accounts that existed only on the office server before this step no longer work; create them again with `npm run user -- add` if still needed.
+
+**Rollback** (if the office copy is wrong, before users rely on it):
+
+1. `setup\stop-app.bat`
+2. Restore the backup from step 5 with `pg_restore --clean --if-exists` into `kun_mh`, the same way as step 6, but using `kun_mh_before_neon_<date>.dump`.
+3. In `server\.env`, set `DATA_MODE=kv` (or remove the line), and start the app.
+
+**Ongoing**
+
+- The nightly backup (`KUN-MH Backup`) keeps backing up the office `kun_mh`. It does not copy anything from Neon.
+- Neon is not changed by any step of this part, except that the dump only reads it.
+- Keep the Neon dump (step 3) for at least a year, and the office backup from step 5 until the office has run for a week.
+
+---
+
 ## Security checklist
 
 - [ ] Only IIS (8080, 8443) answers from the network. Ports 3100 and 5432 are closed to the network (`check-access.bat` shows the status of 5432 as a warning, because it is shared).
@@ -517,4 +600,5 @@ Use this once, on a server that still runs KUN MH on its own PostgreSQL 16 clust
 - [ ] The nightly backup task exists (`KUN-MH Backup`), and one backup was checked
 - [ ] The server's time zone is Baghdad time, and `server\.env` has `TZ=Asia/Baghdad`
 - [ ] Data moved from PostgreSQL 16, if the server had one (Part 12)
+- [ ] Hosted (Neon) copy taken to the office server, if wanted, and the office app on tables mode (Part 13)
 - [ ] The server was restarted once, and the app and database came back by themselves
