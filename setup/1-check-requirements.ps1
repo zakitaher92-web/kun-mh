@@ -83,6 +83,11 @@ if ($confFile -and (Test-Path $confFile)) {
     Write-Info 'The data folder of the cluster could not be read; listen_addresses was not checked.'
 }
 
+# Time zone: business dates and the logs use Baghdad time (Windows ID "Arabic Standard Time", UTC+03:00).
+$tzId = ((tzutil.exe /g) | Out-String).Trim()
+if ($tzId -eq 'Arabic Standard Time') { Write-Ok 'Windows time zone is Baghdad time (Arabic Standard Time)' }
+else { Write-Warn "The Windows time zone is '$tzId'. Set it to Baghdad time: tzutil /s ""Arabic Standard Time"" (check with tzutil /g), then restart the app." }
+
 # IIS and its two add-ons (IIS itself is installed by step 7)
 $w3svc = Get-Service -Name W3SVC -ErrorAction SilentlyContinue
 if ($w3svc) { Write-Ok "IIS is installed (service W3SVC: $($w3svc.Status))" }

@@ -86,7 +86,7 @@ async function run(client, sql, params) {
       console.log('pg_hba.conf: a rule for this role on 127.0.0.1 already exists. Nothing to change.');
     } else if (hbaOk === false) {
       console.log('pg_hba.conf: NO rule found for this role on 127.0.0.1. Add this line to pg_hba.conf of the cluster,');
-      console.log('above any reject rule, and reload the service. This script does not edit the file:');
+      console.log('above any reject rule, then run SELECT pg_reload_conf(); (a reload, not a restart). This script does not edit the file:');
       console.log(`    host    ${DB}    ${USER}    127.0.0.1/32    scram-sha-256`);
     }
   } finally {

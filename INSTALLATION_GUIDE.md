@@ -102,7 +102,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 
 | Step | File | What it does |
 |---|---|---|
-| 1 | `1-check-requirements.bat` | Checks Node.js 22.9+, PostgreSQL 18 (version and programs), the service **postgresql-x64-18** (running, on port 5432), the value of `listen_addresses` (warns if not localhost), IIS URL Rewrite and ARR, and the KUN MH ports. Fix anything marked **FAIL**. |
+| 1 | `1-check-requirements.bat` | Checks Node.js 22.9+, PostgreSQL 18 (version and programs), the service **postgresql-x64-18** (running, on port 5432), the value of `listen_addresses` (warns if not localhost), the Windows time zone (Arabic Standard Time, Baghdad: warns otherwise), IIS URL Rewrite and ARR, and the KUN MH ports. Fix anything marked **FAIL**. |
 | 2 | `2-install-packages.bat` | Installs the server packages (`npm ci`). One time only. |
 | 3 | `3-create-database.bat` | Creates the role **kunmh** and the database **kun_mh** on the shared cluster. Asks for the password of the `postgres` user. Prints the `pg_hba.conf` line (see below). Does not create a cluster. Safe to run again. |
 | 4 | `4-configure.bat` | Writes `server\.env` (defaults in Part 5) and tests the connection. Keeps the `COOKIE_SECURE` line of the previous settings. |
@@ -111,6 +111,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
 | 7 | `7-setup-iis.bat` | Sets up IIS for the app on the office ports, with the firewall rule. Never stops **Default Web Site**. |
 | 8 | `8-backup.bat -Register` | Creates the nightly backup task **KUN-MH Backup** (02:00, as **kunapp**). `8-backup.bat` alone runs one backup now. |
 | - | `check-access.bat` | Read-only check, any time. |
+| - | `check-events.bat` | Live-update stream test, through IIS or directly (Part 9). Logs in with a test account. |
 
 **Step 3 in detail**
 
@@ -124,7 +125,7 @@ Open the `setup` folder inside `kun-mh`. For each step, **right-click** the `.ba
    ```
    host    kun_mh    kunmh    127.0.0.1/32    scram-sha-256
    ```
-   Add it yourself to `pg_hba.conf` of the cluster, **above any reject rule**, then restart the service `postgresql-x64-18`. Step 3 never edits the file. Restarting the service stops the Billing app too: plan that with its owner.
+   Add it yourself to `pg_hba.conf` of the cluster, **above any reject rule**, then reload the configuration with `SELECT pg_reload_conf();` (a reload: no application stops). Step 3 never edits the file. Restart the service `postgresql-x64-18` only when `listen_addresses` changes, because a restart stops the Billing app too: plan that with its owner.
 
 **Step 4 in detail:** the defaults are `DB_HOST=127.0.0.1`, `DB_PORT=5432`, `DB_NAME=kun_mh`, `DB_USER=kunmh`, `TZ=Asia/Baghdad`. An old `server\.env` is saved as `server\.env.bak`; its `COOKIE_SECURE` line is kept.
 
@@ -166,7 +167,7 @@ ALTER DATABASE kun_mh SET timezone = 'Asia/Baghdad';
 GRANT ALL ON SCHEMA public TO kunmh;
 ```
 
-Then add the `pg_hba.conf` line from Part 3, step 3 (by hand, above any reject rule), and restart `postgresql-x64-18`. Do not change any other database or role.
+Then add the `pg_hba.conf` line from Part 3, step 3 (by hand, above any reject rule), and reload with `SELECT pg_reload_conf();` (as `postgres`; no restart). Do not change any other database or role.
 
 ### 4.4 Start command and the NSSM service
 
@@ -182,7 +183,11 @@ Create the service (replace the placeholders):
 C:\Tools\nssm\nssm.exe install KUN-MH "C:\Program Files\nodejs\node.exe" "--env-file-if-exists=.env src\server.js"
 C:\Tools\nssm\nssm.exe set KUN-MH AppDirectory "<RELEASE>\server"
 C:\Tools\nssm\nssm.exe set KUN-MH ObjectName ".\kunapp" "<password of kunapp>"
-C:\Tools\nssm\nssm.exe set KUN-MH Start SERVICE_AUTO_START
+C:\Tools\nssm\nssm.exe set KUN-MH DependOnService postgresql-x64-18
+C:\Tools\nssm\nssm.exe set KUN-MH Start SERVICE_DELAYED_AUTO_START
+C:\Tools\nssm\nssm.exe set KUN-MH AppExit Default Restart
+C:\Tools\nssm\nssm.exe set KUN-MH AppRestartDelay 5000
+C:\Tools\nssm\nssm.exe set KUN-MH AppRotateOnline 1
 C:\Tools\nssm\nssm.exe set KUN-MH AppStdout "<DATA>\logs\server.log"
 C:\Tools\nssm\nssm.exe set KUN-MH AppStderr "<DATA>\logs\server.log"
 C:\Tools\nssm\nssm.exe set KUN-MH AppRotateFiles 1
@@ -190,7 +195,18 @@ C:\Tools\nssm\nssm.exe set KUN-MH AppRotateBytes 10485760
 C:\Tools\nssm\nssm.exe start KUN-MH
 ```
 
-Give `kunapp` read access to `<RELEASE>` and modify access to `<DATA>\logs` (Route A does this in step 6). The service runs as `kunapp`, not as SYSTEM and not as an administrator. NSSM's own rotation is on (10 MB).
+Give `kunapp` read access to `<RELEASE>` and modify access to `<DATA>\logs` (Route A does this in step 6). The service runs as `kunapp`, not as SYSTEM and not as an administrator. What each setting does:
+
+- `DependOnService postgresql-x64-18`: Windows starts the service after the database service.
+- `SERVICE_DELAYED_AUTO_START`: the service starts shortly after the other automatic services, which gives PostgreSQL time to start first.
+- `AppExit Default Restart` with `AppRestartDelay 5000`: when the app exits, NSSM starts it again after 5 seconds.
+- `AppRotateOnline 1` with `AppRotateFiles 1` and `AppRotateBytes 10485760`: NSSM rotates `server.log` while the app runs, when it reaches 10 MB, and keeps one older copy. **The name of the older copy and the retention are not checked on a server yet** (NSSM was not installed when this guide was written). Check after the first rotation, and adjust the cleanup below if the name differs.
+
+Cleanup of old logs (run daily with Task Scheduler as an administrator, or by hand, deletes rotated copies older than 14 days):
+
+```bat
+forfiles /P "<DATA>\logs" /M "server.log.*" /D -14 /C "cmd /c del /q @path"
+```
 
 ### 4.5 Check the binding and the health
 
@@ -227,6 +243,7 @@ Both routes use the same settings. Values marked **secret** must never be shared
 | `DATA_MODE` | no | no | `kv` | `kv` | `kv` (office). `tables` only after the hosted cutover (HOSTED-VERCEL.md) |
 | `COOKIE_SECURE` | no | no | off | `true` | Only when users reach the app over HTTPS. Kept by step 4 |
 | `LIVE_UPDATES` | no | no | on | `on` | `off` disables the live-update listener |
+| `DB_WAIT_SECONDS` | no | no | `300` | `300` | How long the app waits at start-up for PostgreSQL to accept connections (Part 9) |
 
 Setup-only variables (read by the scripts, not by the running app): `KUN_PG_SUPERUSER_PASSWORD`, `KUNMH_PASSWORD`, `KUN_PG_PORT`, `KUN_APP_PORT`, `KUN_HTTP_PORT`, `KUN_HTTPS_PORT`, `KUN_STOP_CONFLICTS`.
 
@@ -322,9 +339,9 @@ A 502 from IIS means the app is not answering on `<PORT>`. There is no dedicated
 - **The server (Node):** `TZ=Asia/Baghdad` in `server\.env`. Dates made by the server (audit log times, the log's timestamps) use it. Node reads `TZ` when the app starts, so a change needs a restart.
 - **The database:** `ALTER DATABASE kun_mh SET timezone = 'Asia/Baghdad'` (step 3). Sessions of the app use it. Columns declared `TIMESTAMPTZ` are stored in UTC and shown in this zone.
 - **The page (browser):** "today", the report date and the date defaults are computed in Asia/Baghdad time, whatever the computer's own time zone (version 2.2.0). Excel dates are read as calendar dates.
-- **The computers and the server clock:** set Windows to **Baghdad Standard Time** and keep the clock synchronised. The times in the audit log and the backups depend on it.
+- **The computers and the server clock:** the Windows time zone of the server must be the one with the ID **Arabic Standard Time** (display name *(UTC+03:00) Baghdad*). Check with `tzutil /g` (it prints the ID), and set it with `tzutil /s "Arabic Standard Time"`. Step 1 warns if it is different. Keep the clock synchronised. The times in the audit log and the backups depend on it.
 
-**Log rotation (the app's log).** The launcher `setup\run-server.cmd` (used by the scheduled task) checks `logs\server.log` each time the app starts. A log larger than **10 MB** is renamed to `server-YYYYMMDD-HHMMSS.log`, and rotated logs older than **14 days** are deleted. The check runs at each start, so a server that runs for weeks without a restart keeps writing to one file until its next start. Route B (NSSM) rotates the log by size at 10 MB and keeps one older copy (`server.log.1`).
+**Log rotation (the app's log).** The launcher `setup\run-server.cmd` (used by the scheduled task) checks `logs\server.log` each time the app starts. A log larger than **10 MB** is renamed to `server-YYYYMMDD-HHMMSS.log`, and rotated logs older than **14 days** are deleted. The check runs at each start, so a server that runs for weeks without a restart keeps writing to one file until its next start. Route B (NSSM) rotates the log while the app runs, at 10 MB; see Part 4.4 for the settings and the cleanup.
 
 **Which Windows account runs the tasks.** The app task **KUN-MH Server** and the backup task **KUN-MH Backup** run as the local account **`kunapp`**, which is not an administrator and not SYSTEM. Step 6 creates it with a random password, and grants it read access to the release folder and modify access to `logs` and `C:\KUN\backups`. Windows keeps the password for the tasks; step 8 `-Register` gives the account a new password and registers both tasks again.
 
@@ -335,6 +352,18 @@ A 502 from IIS means the app is not answering on `<PORT>`. There is no dedicated
 **Request size and timeouts.** JSON bodies up to 10 MB. A database connection attempt waits up to 10 seconds; a query up to 20 seconds.
 
 **Frontend.** `index.html` is one page, with no build step. It calls the server with relative paths (`/api/...`), so no API address is set.
+
+**Restart and retry behaviour (Route A).**
+
+- **The app task `KUN-MH Server`** runs as `kunapp` whether or not anyone is logged on. It starts 60 seconds after Windows starts (so PostgreSQL has time to start), has no time limit, and is not stopped by battery settings. If the app exits with an error, the task restarts it every minute, up to 999 times. A second start while one is running is ignored.
+- **The database at boot.** If PostgreSQL is not ready yet, the app does not exit at once. It retries the connection every 5 seconds for up to `DB_WAIT_SECONDS` (default 300 seconds), and logs each attempt as `Database not ready (attempt n)`. If PostgreSQL is still not reachable after that, the app exits with an error, and the task restarts it a minute later.
+- **Live-update listener.** The connection that carries the live updates retries every 3 seconds if it drops.
+
+**How the nightly backup connects.** The backup task `KUN-MH Backup` runs as the Windows account `kunapp`. Windows does not log in to PostgreSQL with that account. The backup script reads `DB_PASSWORD` from `server\.env` and gives it to `pg_dump` in the environment variable `PGPASSWORD`, for the length of the dump only. The database user is `kunmh`. No `pgpass.conf` file is created. Step 8 with `-Register` gives `kunapp` a new Windows password and registers both tasks again. That does not change `DB_PASSWORD`, so the backup keeps working. If the `kunmh` password changes, change `DB_PASSWORD` in `server\.env` (or run step 4 again).
+
+**The cookie behind IIS (COOKIE_SECURE).** The app marks the session cookie `Secure` when `COOKIE_SECURE=true`. It does not look at proxy headers: the decision is made from the setting. IIS receives the HTTPS request, and passes it to the app on 127.0.0.1 as plain HTTP; the app's answer carries the `Secure` flag, and the browser, which uses HTTPS, keeps the cookie. Over plain `http://` the browser drops a `Secure` cookie, so the log-in fails. Step 7 redirects `http://` to `https://` when a certificate is set, so users are sent to HTTPS. `check-access.bat` warns if `COOKIE_SECURE=true` and the site has no HTTPS binding.
+
+**Checking the live-update stream.** Run `setup\check-events.bat https://<server name>:8443` (through IIS), and then `setup\check-events.bat http://127.0.0.1:3100` (the app directly). The test logs in with a test account and checks that the response type is `text/event-stream`, that its first line arrives within 5 seconds (nothing is held back), and that a keep-alive line arrives within 35 seconds. If the first line is late, IIS is buffering or compressing the stream. The site's `web.config` (written by step 7) has `responseBufferLimit="0"`, and turns off dynamic compression (`urlCompression doDynamicCompression="false"`). Check both in IIS Manager after a change.
 
 **Scheduled work and the single-instance rule.**
 - Inside the app: an hourly job deletes expired sessions (safe with several processes).
@@ -353,7 +382,7 @@ A 502 from IIS means the app is not answering on `<PORT>`. There is no dedicated
 | `The service postgresql-x64-18 is not running` (step 1 or 3) | Start it in services.msc. This also starts the Billing app's database. Check first that nobody else is using it |
 | `Nothing answers on port 5432` (step 1, 3 or 4) | The service is stopped, or the cluster listens on another address. Check the service and `listen_addresses` (step 1) |
 | `listen_addresses = '<value>'` (warning, step 1) | The cluster accepts network connections. Ask the owner of the Billing app to set it to `localhost`. KUN MH does not change it |
-| `pg_hba.conf` line printed (step 3) | Add the printed line to `pg_hba.conf` yourself, above any reject rule, and restart `postgresql-x64-18` (this also stops the Billing app briefly). Then run step 4 again |
+| `pg_hba.conf` line printed (step 3) | Add the printed line to `pg_hba.conf` yourself, above any reject rule, and run `SELECT pg_reload_conf();` as `postgres` (a reload: nothing stops). Then run step 4 again |
 | `could not connect` / *password authentication failed for user "kunmh"* | The `DB_PASSWORD` in `server\.env` does not match `kunmh`. Run step 3 and then step 4 again with the same password |
 | `The postgres user is not allowed to do this (insufficient privilege)` (step 3) | The password is not the superuser's, or the `postgres` user is not a superuser. Check the password. The step does not change superuser rights |
 | `Port 3100 is already in use` (step 6) | The app is running already. Run `stop-app.bat` first, then start it again |
@@ -371,7 +400,13 @@ A 502 from IIS means the app is not answering on `<PORT>`. There is no dedicated
 | `The app is in a user profile folder` (step 7) | Move the folder to `C:\KUN\kun-mh`, then run steps 6 and 7 from there |
 | Dates are one day behind (before 03:00) | Use version 2.2.0 or later (dates in Baghdad time). Check the time zone (Part 9) |
 | Times in the log are wrong by three hours | Check that `TZ=Asia/Baghdad` is in `server\.env`, and restart the app |
-| The log does not rotate | Rotation happens when the app starts. Restart it to rotate a large log |
+| The log does not rotate | Route A: rotation happens when the app starts; restart it to rotate a large log. Route B: check NSSM's rotation after its first rotation (Part 4.4) |
+| The log-in fails on `http://` but works on `https://` | With `COOKIE_SECURE=true` the browser keeps the cookie only over HTTPS. Use the `https://` address (step 7 redirects there when a certificate is set), or remove `COOKIE_SECURE` (Part 9) |
+| `check-events` says the first line is late, or no keep-alive arrives | IIS is buffering or compressing the stream. Check `responseBufferLimit="0"` and `doDynamicCompression="false"` in the site's `web.config`, and the ARR forwarding timeout (more than 25 seconds). Run step 7 again to rewrite `web.config` |
+| The app stops at start-up with `Database not ready` and then `Could not start the server` | PostgreSQL was not reachable for `DB_WAIT_SECONDS` (default 300). Start `postgresql-x64-18`, check the port (step 1), and the task starts the app again within a minute |
+| Step 1 warns about the time zone | Set Windows to Baghdad time: `tzutil /s "Arabic Standard Time"`, check with `tzutil /g`, then restart the app |
+| `fc` shows differences after the data move (Part 12, step 6) | Do not switch the app. Find the table that differs, check the restore output for that table, and repeat step 5 with `--clean --if-exists` if needed |
+| Both KUN-MH tasks stop running after someone changed the `kunapp` password by hand | The tasks keep the old password, so Windows cannot start them. Run `setup\8-backup.bat -Register` (as administrator): it gives `kunapp` a new password and registers both tasks again. Do not change `kunapp`'s password by hand |
 | Step 3 or 4 says `The database service ... was not found` | Install PostgreSQL 18 (Part 1b) and run step 3 again |
 
 When you report a problem, send the text of the script window, the output of `check-access.bat`, and the last lines of `logs\server.log`.
@@ -400,33 +435,57 @@ Use this for any update to version 2.2.0 or later. Upgrades of older versions ar
 
 ## Part 12 - Move the data from PostgreSQL 16 (postgresql-kun-16, port 5433)
 
-Use this once, on a server that still runs KUN MH on its own PostgreSQL 16 cluster. The new database is the shared PostgreSQL 18 cluster (step 3). The old cluster stays in place until the new one has run for two weeks.
+Use this once, on a server that still runs KUN MH on its own PostgreSQL 16 cluster. The target is the shared PostgreSQL 18 cluster (step 3). The old cluster stays in place until the new one has run for two weeks.
 
-**Before you start:** plan about an hour, outside working hours. Keep the old cluster running until the end.
+**Before you start:** plan about an hour, outside working hours. Keep the old cluster running until step 9.
 
-1. **Install and prepare the new database.** Run steps 1 to 3 (Part 3) so that the role `kunmh` and the database `kun_mh` exist on `postgresql-x64-18`. Do not run step 4 yet.
+1. **Prepare the new database.** Run steps 1 to 3 (Part 3), so that the role `kunmh` and the database `kun_mh` exist on `postgresql-x64-18`. Do not run step 4 yet.
+   1a. **Allow the app to log in, and test it.**
+   - a. Add the `pg_hba.conf` line printed by step 3 to `pg_hba.conf` of the shared cluster, above any reject rule.
+   - b. Reload the configuration (a reload stops nothing; do not restart the service):
+     ```bat
+     "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "SELECT pg_reload_conf();"
+     ```
+   - c. Test the login of the app role. It must print a row with the value 1:
+     ```bat
+     "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh -c "select 1"
+     ```
+     If it fails, read the message in Part 10 before going on.
+
 2. **Stop the app.** `setup\stop-app.bat`. Tell users to stop saving. Keep the old cluster running.
-3. **Record the row counts of the old database.** In Command Prompt:
+
+3. **Save the exact row count of every table** of the old database, as the `postgres` user. The output has one line per table: the table name and its row count.
    ```bat
-   "C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -c "SELECT coll, count(*) FROM kv_docs GROUP BY coll ORDER BY coll;" -c "SELECT count(*) AS accounts FROM accounts;" -c "SELECT count(*) AS sessions FROM sessions;" > C:\KUN\backups\counts-pg16.txt
+   "C:\Program Files\PostgreSQL\16\bin\psql.exe" -h 127.0.0.1 -p 5433 -U postgres -d kun_mh -At -F "," -c "SELECT table_name, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint AS row_count FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;" > C:\KUN\backups\counts-pg16.csv
    ```
-   Keep the file; it is compared in step 6.
-4. **Dump with the PostgreSQL 18 programs** (the newer client reads the older server):
+   Keep the file. It is compared in step 6.
+
+4. **Dump as `postgres`**, with the PostgreSQL 18 programs (the newer client reads the older server):
    ```bat
-   "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h 127.0.0.1 -p 5433 -U kunmh -d kun_mh -Fc -f C:\KUN\backups\kun_mh_pg16_to_18.dump
+   "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h 127.0.0.1 -p 5433 -U postgres -d kun_mh -Fc -f C:\KUN\backups\kun_mh_pg16_to_18.dump
    ```
    Check the file is not empty.
-5. **Restore into the shared cluster**, with the owner role (no ownership or privileges are copied):
-   ```bat
-   "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" -h 127.0.0.1 -p 5432 -U kunmh -d kun_mh --no-owner --no-privileges --role=kunmh -v C:\KUN\backups\kun_mh_pg16_to_18.dump
-   ```
-   Read the output: errors about extensions or missing roles must be understood before you go on. Run the restore once; to start again, drop the objects with the same command and `--clean --if-exists`.
-6. **Compare the counts.** Run the same three queries against port 5432 (PostgreSQL 18). Every line must match `counts-pg16.txt`. If one does not match, stop: the app stays on the old cluster.
-7. **Point the app at PostgreSQL 18.** Run step 4 (it writes `DB_PORT=5432`, keeps `COOKIE_SECURE`, and saves the old `.env` as `.env.bak`). Then `setup\6-start-app.bat` and check that the log ends with `KUN MH server running`, and `npm run db:status` shows the expected counts.
-8. **Spot checks.** Log in. Open a purchase order list, the job card register and the audit log. Compare a few numbers with what users saw before. Then tell users they can save again.
-9. **Keep the old cluster for two weeks.** Stop and disable the service `postgresql-kun-16` after the check, and keep its data folder. Set it to Manual, so it does not start after a restart. After two weeks of normal use, uninstall it with the PostgreSQL 16 uninstaller, and delete its data folder.
 
-**Rollback** (before users save on the new cluster): stop the app, set `DB_PORT=5433` and the old password in `server\.env` (from `.env.bak`), start the old service `postgresql-kun-16`, start the app.
+5. **Restore into the shared cluster.** Ownership and privileges are not copied, and the objects belong to `kunmh`:
+   ```bat
+   "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh --no-owner --no-privileges --role=kunmh -v C:\KUN\backups\kun_mh_pg16_to_18.dump
+   ```
+   Read the output. Errors about extensions or missing roles must be understood before you go on. To start again, run the same command with `--clean --if-exists` added.
+
+6. **Compare every table.** Save the same count from the new cluster, and compare the two files:
+   ```bat
+   "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -d kun_mh -At -F "," -c "SELECT table_name, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint AS row_count FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;" > C:\KUN\backups\counts-pg18.csv
+   fc C:\KUN\backups\counts-pg16.csv C:\KUN\backups\counts-pg18.csv
+   ```
+   `fc` must print **FC: no differences encountered**. Any difference: stop. The app stays on the old cluster until the difference is explained.
+
+7. **Point the app at PostgreSQL 18.** Run step 4 (it writes `DB_PORT=5432`, keeps `COOKIE_SECURE`, and saves the old `.env` as `.env.bak`). Then run step 6, check that the log ends with `KUN MH server running`, and run `npm run db:status`: it shows the same tables and counts as step 3.
+
+8. **Spot checks.** Log in. Open a purchase order list, the job card register and the audit log. Compare a few numbers with what users saw before. Then tell users they can save again.
+
+9. **Keep the old cluster for two weeks.** Set the service `postgresql-kun-16` to **Manual** (not Disabled), so it can be started again for a rollback. Keep its data folder. After two weeks of normal use, uninstall PostgreSQL 16 with its uninstaller. If the uninstaller leaves the service behind, stop it, then run as an administrator `sc.exe delete postgresql-kun-16`, and only then delete the data folder. Never change `postgresql-x64-18` or the Billing app during this step.
+
+**Rollback** (before users save on the new cluster): stop the app, restore `server\.env` from `.env.bak` (it has `DB_PORT=5433` and the old password), start the service `postgresql-kun-16`, and start the app.
 
 ---
 
@@ -453,7 +512,7 @@ Use this once, on a server that still runs KUN MH on its own PostgreSQL 16 clust
 - [ ] Certificate thumbprint noted, or HTTPS planned later (Part 1e)
 - [ ] Server name in DNS or known to the office network (Part 1f)
 - [ ] Route A: steps 1 to 8 finished, no FAIL lines; `check-access.bat` reviewed. Route B: sections 4.1 to 4.6 done
-- [ ] `pg_hba.conf` line added by the administrator and the service restarted (step 3)
+- [ ] `pg_hba.conf` line added by the administrator and reloaded with `SELECT pg_reload_conf();` (step 3); the service was not restarted for it
 - [ ] The app opens from another computer; the first log-in works
 - [ ] The nightly backup task exists (`KUN-MH Backup`), and one backup was checked
 - [ ] The server's time zone is Baghdad time, and `server\.env` has `TZ=Asia/Baghdad`

@@ -21,6 +21,11 @@ try {
 
     Write-Info "App port (private): $appPort    Database port (private): $dbPort"
     Write-Info "Office users: HTTP $httpPort$(if ($httpsPort) { ", HTTPS $httpsPort" })    Network address of this server: $lan"
+    # COOKIE_SECURE=true makes the browser keep the session cookie only over HTTPS. Over plain HTTP the log-in then fails.
+    if ((Get-EnvValue 'COOKIE_SECURE') -match '^(1|true|yes)$' -and -not $httpsBinding) {
+        Write-Warn 'COOKIE_SECURE=true, but the site has no HTTPS binding. Users on http:// cannot keep the log-in. Set up HTTPS (INSTALLATION_GUIDE.md, Part 8), or remove COOKIE_SECURE.'
+        $problems++
+    }
     Write-Host ''
 
     # Services

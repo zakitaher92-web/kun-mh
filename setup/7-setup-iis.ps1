@@ -150,6 +150,8 @@ __HTTPS_RULE__        <rule name="KUN-MH app" stopProcessing="true">
         </rule>
       </rules>
     </rewrite>
+    <!-- No dynamic compression for this site: a compressed stream would be held back until enough data is buffered -->
+    <urlCompression doDynamicCompression="false" />
     <!-- responseBufferLimit=0: the live-update stream (/api/events) must not be held back by IIS -->
     <proxy enabled="true" preserveHostHeader="true" reverseRewriteHostInResponseHeaders="false" responseBufferLimit="0" />
   </system.webServer>

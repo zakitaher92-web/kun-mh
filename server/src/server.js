@@ -30,9 +30,28 @@ function startListener(notifier) {
     });
 }
 
+// At start-up PostgreSQL may not be up yet (for example after a restart of the server). The app keeps
+// trying every 5 seconds for up to DB_WAIT_SECONDS (default 300), then stops with an error; the
+// service or scheduled task starts it again.
+async function applySchemaWhenReady(pool) {
+  const waitMs = Number(process.env.DB_WAIT_SECONDS || 300) * 1000;
+  const deadline = Date.now() + waitMs;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await applySchema(pool);
+      if (attempt > 1) console.log(`Database is ready (after ${attempt} attempts).`);
+      return;
+    } catch (e) {
+      if (Date.now() >= deadline) throw e;
+      console.error(`Database not ready (attempt ${attempt}): ${e.message}. Retrying in 5 seconds.`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+}
+
 async function main() {
   const pool = createPool();
-  await applySchema(pool);
+  await applySchemaWhenReady(pool);
   const notifier = new EventEmitter();
   // LIVE_UPDATES=off on serverless hosts (Vercel): a LISTEN connection cannot stay open there.
   if (process.env.LIVE_UPDATES !== 'off') await startListener(notifier);
