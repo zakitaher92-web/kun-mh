@@ -656,17 +656,26 @@ function recalc() {
       return { i, item: l.item, qty: num(l.qty), rate: num(l.rate), amount, mpl: m ? m.rate : null, diff, price, check, type: itemType(l.item), unit: (item(l.item) || {}).unit || '' };
     });
     const value = lines.reduce((a, l) => a + l.amount, 0);
-    C.po[p.no] = { lines, value, recQty: {}, billedQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
+    C.po[p.no] = { lines, value, recQty: {}, recQtyLine: {}, billedQty: {}, received: 0, billed: 0, paidNet: 0, advPaid: 0, advAdj: 0 };
   });
+
+  // A GRN or SRN line is matched to a PO line by its position first (lines are entered in PO order),
+  // then by item: the same item can be on several PO lines at different rates.
+  const poLineFor = (pc, l, i) => {
+    if (!pc) return null;
+    const byPos = pc.lines[i];
+    if (byPos && byPos.item === l.item) return byPos;
+    return pc.lines.find(x => x.item === l.item) || null;
+  };
 
   // GRN rows
   const cumAcc = {};
   S.grns.slice().sort((a, b) => (a.date + a.no).localeCompare(b.date + b.no)).forEach(g => {
     const p = findPO(g.po), pc = p && C.po[p.no];
     g.lines.forEach((l, i) => {
-      const pl = pc && pc.lines.find(x => x.item === l.item);
+      const pl = poLineFor(pc, l, i);
       const recd = num(l.recd), acc = num(l.acc), rej = recd - acc;
-      const key = g.po + '|' + l.item; cumAcc[key] = (cumAcc[key] || 0) + acc;
+      const key = g.po + '|' + (pl ? '#' + pl.i : l.item); cumAcc[key] = (cumAcc[key] || 0) + acc;
       const flags = [];
       if (!g.po) flags.push(g.noPo ? 'No PO - approved by ' + (g.noPoBy || '-') : 'No PO - not allowed');
       else if (!p) flags.push('PO not found');
@@ -682,7 +691,7 @@ function recalc() {
       if (rej > 0) flags.push('Rejected ' + fmtQ(rej) + ' (return / debit note)');
       if (!g.by) flags.push('Received by missing');
       const rate = pl ? pl.rate : 0, val = acc * rate;
-      if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + acc; pc.received += val; }
+      if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + acc; pc.recQtyLine[pl.i] = (pc.recQtyLine[pl.i] || 0) + acc; pc.received += val; }
       C.grn.push({ g, l, i, vendor: p ? p.vendor : (g.vendor || ''), poQty: pl ? pl.qty : null, rate, val, rej, cum: cumAcc[key], bal: pl ? pl.qty - cumAcc[key] : null, line: p ? p.line : '', mk: mkey(g.date), check: flags.length ? flags.join('; ') : 'OK' });
     });
   });
@@ -692,8 +701,8 @@ function recalc() {
   S.srns.slice().sort((a, b) => (a.date + a.no).localeCompare(b.date + b.no)).forEach(s => {
     const p = findPO(s.po), pc = p && C.po[p.no];
     s.lines.forEach((l, i) => {
-      const pl = pc && pc.lines.find(x => x.item === l.item);
-      const q = num(l.qty); const key = s.po + '|' + l.item; cumS[key] = (cumS[key] || 0) + q;
+      const pl = poLineFor(pc, l, i);
+      const q = num(l.qty); const key = s.po + '|' + (pl ? '#' + pl.i : l.item); cumS[key] = (cumS[key] || 0) + q;
       const flags = [];
       if (!s.po) flags.push('No PO - not allowed');
       else if (!p) flags.push('PO not found');
@@ -706,7 +715,7 @@ function recalc() {
       }
       if (!s.prepBy || !s.confBy) flags.push('Preparer / user confirmation missing');
       const rate = pl ? pl.rate : 0, val = q * rate;
-      if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + q; pc.received += val; }
+      if (pc && pl && !p.cancel) { pc.recQty[l.item] = (pc.recQty[l.item] || 0) + q; pc.recQtyLine[pl.i] = (pc.recQtyLine[pl.i] || 0) + q; pc.received += val; }
       C.srn.push({ s, l, i, vendor: p ? p.vendor : '', poQty: pl ? pl.qty : null, rate, val, cum: cumS[key], bal: pl ? pl.qty - cumS[key] : null, line: p ? p.line : '', mk: mkey(s.date), check: flags.length ? flags.join('; ') : 'OK' });
     });
   });
@@ -806,7 +815,7 @@ function recalc() {
     if (c.budget === 'OVER BUDGET') sig.push('Sigat (budget revision before issue)');
     if (num(p.adv) > num(st.maxAdv)) sig.push('Sigat (advance above limit)');
     c.signatures = sig;
-    c.full = c.lines.length > 0 && c.lines.every(l => (c.recQty[l.item] || 0) >= l.qty - 1e-9);
+    c.full = c.lines.length > 0 && c.lines.every(l => (c.recQtyLine[l.i] || 0) >= l.qty - 1e-9);
     c.balance = v - c.received;
     c.status = p.cancel ? 'Cancelled' : p.closedOn ? (p.shortClosed ? 'Short-closed' : 'Closed') : !p.approvedBy ? 'Awaiting approval' :
       (c.full && c.received > 0 && c.billed >= c.received - 1) ? 'Ready to close' : c.full ? 'Received - awaiting bill' : c.received > 0 ? 'Part received' : 'Approved - open';
@@ -1851,7 +1860,7 @@ function printADV(no) {
 function poLinesHint(p, type) {
   if (!p) return '';
   const c = C.po[p.no];
-  return `<table class="mini"><thead><tr><th>PO line</th><th class="n">PO qty</th><th class="n">Received so far</th><th class="n">Balance</th></tr></thead><tbody>${c.lines.filter(l => type === 'stock' ? l.type === 'Stock item' : l.type !== 'Stock item').map(l => `<tr><td>${esc(l.item + ' ' + itemName(l.item))}</td><td class="n">${fmtQ(l.qty)}</td><td class="n">${fmtQ(c.recQty[l.item] || 0)}</td><td class="n">${fmtQ(l.qty - (c.recQty[l.item] || 0))}</td></tr>`).join('')}</tbody></table>`;
+  return `<table class="mini"><thead><tr><th>PO line</th><th class="n">PO qty</th><th class="n">Received so far</th><th class="n">Balance</th></tr></thead><tbody>${c.lines.filter(l => type === 'stock' ? l.type === 'Stock item' : l.type !== 'Stock item').map(l => `<tr><td>${esc(l.item + ' ' + itemName(l.item))}</td><td class="n">${fmtQ(l.qty)}</td><td class="n">${fmtQ(c.recQtyLine[l.i] || 0)}</td><td class="n">${fmtQ(l.qty - (c.recQtyLine[l.i] || 0))}</td></tr>`).join('')}</tbody></table>`;
 }
 view('grn', 'Goods receipt notes', 'GRN', 'Receiving', 'MH-11 / 12', () => {
   const ed = canEdit('GRN') && may('GRN Officer');
